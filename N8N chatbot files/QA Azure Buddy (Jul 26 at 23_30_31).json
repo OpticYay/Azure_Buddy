@@ -1,0 +1,1800 @@
+{
+  "name": "QA Azure Buddy (Jul 26 at 23:30:31)",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        1376,
+        -496
+      ],
+      "id": "0beda3cb-dd7c-4cd8-b789-fc2505768a79",
+      "name": "When chat message received",
+      "webhookId": "f76d583c-1bcd-4849-a455-bec802d88933"
+    },
+    {
+      "parameters": {
+        "needsFallback": true,
+        "promptType": "define",
+        "text": "={{ $('When chat message received').first().json.chatInput }}",
+        "options": {
+          "systemMessage": "Role: Expert QA Assistant managing Azure DevOps via n8n.\n\nOutput Formatting (applies to every scenario): When your answer includes two or more work items, present them as a markdown table with columns ID | Title | Type | State (only the columns you actually have data for). Be concise, but include every relevant field you already retrieved - never omit or truncate data you have just to save space.\n\nResolving Named References (applies to every scenario): When the user refers to a work item by NAME instead of by numeric ID (e.g. \"the SOA report task\", \"the login story\"), resolve it in this exact order:\n1. FIRST, re-read this conversation's own earlier messages/tables for a title that plausibly matches, using LOOSE matching - ignore word order, extra/missing words like \"task\"/\"testing\"/\"report\", and minor phrasing differences. Judge it the way a human skimming the chat would (e.g. \"SOA report task\" plausibly matches a row titled \"Testing of SOA report\"). If exactly one plausible match exists, use its ID directly - do NOT call `search_work_items` in this case.\n2. ONLY IF no earlier message plausibly matches, call `search_work_items` - and when you do, pass just the 1-2 most distinctive keywords (e.g. \"SOA report\"), not the user's full phrase verbatim, since the search is a literal substring match and extra/reordered words will make it return nothing.\nOnce resolved (by either step), this is a NEW request about THAT item specifically: you MUST make a fresh tool call for that item's own data (e.g. its own linked children, its own details) - never answer by reusing or repeating a table/result you already showed for a DIFFERENT request, even if the referenced item appeared as one row inside that earlier table. A list of items under one parent is not the same thing as one of those items' own children.\n\nScenario A: Bug Creation\n1. `search_work_items`: Pass concise search phrase only. NO WIQL/JSON. If no parent found, STOP and ask user. NEVER hallucinate IDs.\n2. Duplicate check: Look at the same search results (or run one more `search_work_items` call on the bug's core symptom) for an existing open item with a closely matching title. If a likely duplicate exists, tell the user and ask whether to proceed anyway or use the existing one instead - do not silently create a new bug on top of it.\n3. `create_linked_bug`: Pass verified ID to `parent_id`. Title: \"[Bug] - <Summary>\". Only include priority/severity/area_path/iteration_path/assigned_to if the user explicitly stated them - never guess or default these.\n4. HTML RULE: Format `description` exactly as below (NO `\\n`, use `<br>`/`<b>`):\n<b>Bug description:</b> {text}<br><br><b>Steps to reproduce:</b><br>1. {step}<br>2. {step}<br><br><b>Expected result:</b> {text}<br><br><b>Actual result:</b> {text}<br><br><b>Evidence:</b> {text or 'Not provided'}<br><br><b>Environment:</b> {text or 'Not provided'}\n5. If the user gave a URL for evidence (screenshot/log link) instead of describing it inline, after creation call `Attach Evidence Link` with the new bug's id and that URL.\n6. Validate before reporting success: check the `create_linked_bug` response for a numeric `id` field. Only report success (New Bug ID, Title, Parent ID) if `id` is present. If it is missing or the call errored, tell the user the actual error returned - never claim the bug was created if it wasn't.\n\nScenario B: View Bugs\nSTRICT 2-STEP CHAIN:\n1. `Get Linked Items`: Pass numerical Task/Parent ID to get attached Bug IDs.\n2. `Get Work Item Details`: Pass comma-separated IDs from Step 1. NEVER guess titles/statuses.\n3. Output final results to user as a markdown table (ID | Title | State): Actual Bug IDs, Titles, and States. No placeholders.\n\nScenario C: Update or Close a Work Item\n1. Identify the numerical work item id. Get it from `search_work_items` or `Get Linked Items` first - NEVER hallucinate an id.\n2. `Update Work Item`: Pass the verified `id`, and at least one of `state` (e.g. 'Active', 'Resolved', 'Closed') or `comment` (text to add to history). If the user only wants to add a note without changing status, omit `state`.\n3. Output: confirm which id was updated, the new state (if changed), and that the comment was added (if any).\n\nScenario D: My Work Items\n1. `Get My Work Items`: Optionally pass `state` if the user names one (e.g. only 'Active'); otherwise call with no arguments to get all non-Closed items assigned to the configured user.\n2. Output: a markdown table (ID | Title | Type | State) built directly from the tool result. No placeholders, no re-fetching unless the user asks for more detail."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1792,
+        -496
+      ],
+      "id": "2260205e-8cf8-45a4-81be-329161d0201b",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemma-4-31b-it",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        1328,
+        -160
+      ],
+      "id": "50243765-1d55-4b07-b450-517fc6e3a6d8",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "dQSMoOO1dqcyWUUt",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "qwen2.5:14b-instruct",
+        "options": {
+          "numCtx": 8192
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1328,
+        16
+      ],
+      "id": "e4b7a2c8-3f19-4d6e-9a2b-7c1d5f8e0a93",
+      "name": "Ollama Chat Model (Fallback)",
+      "credentials": {
+        "ollamaApi": {
+          "id": "ohedXmQXvf3RjOXC",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 15
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        1888,
+        -144
+      ],
+      "id": "c80bb14f-f6c4-4c2c-861a-38e06db89102",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to create a new Bug linked to a parent work item. Required: title, description (HTML-formatted per system rules), parent_id (verified numerical id). Optional (only include if the user explicitly specified them - never guess): priority (integer 1-4, 1=highest), severity (e.g. '1 - Critical', '2 - High', '3 - Medium', '4 - Low'), area_path, iteration_path, assigned_to (email or display name).",
+        "method": "POST",
+        "url": "=https://dev.azure.com/{{$env.ADO_ORG}}/{{$env.ADO_PROJECT}}/_apis/wit/workitems/$Bug?api-version={{$env.ADO_API_VERSION}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json-patch+json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  [\n    { \"op\": \"add\", \"path\": \"/fields/System.Title\", \"value\": $fromAI('title', 'Bug title, formatted as \\\"[Bug] - <Summary>\\\"', 'string') },\n    { \"op\": \"add\", \"path\": \"/fields/Microsoft.VSTS.TCM.ReproSteps\", \"value\": $fromAI('description', 'HTML-formatted bug description per system prompt HTML rule (uses <br>/<b> tags, no literal newlines)', 'string') },\n    { \"op\": \"add\", \"path\": \"/relations/-\", \"value\": { \"rel\": \"System.LinkTypes.Hierarchy-Reverse\", \"url\": \"https://dev.azure.com/\" + $env.ADO_ORG + \"/\" + $env.ADO_PROJECT + \"/_apis/wit/workItems/\" + $fromAI('parent_id', 'Verified numerical id of the parent work item this bug links to. Never guess.', 'string').toString().replace(/[^0-9]/g, '') } },\n    ...($fromAI('priority', 'Optional integer 1-4 priority (1=highest). Leave blank if the user did not explicitly specify one.', 'string', '') ? [{ \"op\": \"add\", \"path\": \"/fields/Microsoft.VSTS.Common.Priority\", \"value\": $fromAI('priority', 'Optional integer 1-4 priority (1=highest). Leave blank if the user did not explicitly specify one.', 'string', '') }] : []),\n    ...($fromAI('severity', \"Optional severity, e.g. '1 - Critical', '2 - High', '3 - Medium', '4 - Low'. Leave blank if the user did not explicitly specify one.\", 'string', '') ? [{ \"op\": \"add\", \"path\": \"/fields/Microsoft.VSTS.Common.Severity\", \"value\": $fromAI('severity', \"Optional severity, e.g. '1 - Critical', '2 - High', '3 - Medium', '4 - Low'. Leave blank if the user did not explicitly specify one.\", 'string', '') }] : []),\n    ...($fromAI('area_path', 'Optional Area Path. Leave blank if the user did not explicitly specify one.', 'string', '') ? [{ \"op\": \"add\", \"path\": \"/fields/System.AreaPath\", \"value\": $fromAI('area_path', 'Optional Area Path. Leave blank if the user did not explicitly specify one.', 'string', '') }] : []),\n    ...($fromAI('iteration_path', 'Optional Iteration Path. Leave blank if the user did not explicitly specify one.', 'string', '') ? [{ \"op\": \"add\", \"path\": \"/fields/System.IterationPath\", \"value\": $fromAI('iteration_path', 'Optional Iteration Path. Leave blank if the user did not explicitly specify one.', 'string', '') }] : []),\n    ...($fromAI('assigned_to', 'Optional assignee email or display name. Leave blank if the user did not explicitly specify one.', 'string', '') ? [{ \"op\": \"add\", \"path\": \"/fields/System.AssignedTo\", \"value\": $fromAI('assigned_to', 'Optional assignee email or display name. Leave blank if the user did not explicitly specify one.', 'string', '') }] : [])\n  ]\n}}",
+        "options": {},
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput"
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        2688,
+        -224
+      ],
+      "id": "607909e7-f130-4362-800e-c7e20da1582d",
+      "name": "Create Bug",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Y5FuwbdC73UQ2SmM",
+          "name": "Azure Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to find all existing bugs that are linked to a specific User Story. You must provide one argument named parent_id, which is the numerical ID of the User Story. Always use the Search Work Items tool first to find the parent_id if you do not already know it.",
+        "method": "POST",
+        "url": "=https://dev.azure.com/{{$env.ADO_ORG}}/{{$env.ADO_PROJECT}}/_apis/wit/wiql?api-version={{$env.ADO_API_VERSION}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  {\n    \"query\": \"SELECT [System.Id], [System.Title], [System.WorkItemType], [System.State], [System.CreatedDate] FROM WorkItems WHERE [System.Parent] = \" + $fromAI('parent_id', 'The numerical id of the parent work item (User Story/Task) to find linked bugs for. Must be a verified numeric id, never guessed.', 'string').toString().replace(/[^0-9]/g, '') + \" ORDER BY [System.CreatedDate] DESC\"\n  }\n}}",
+        "options": {},
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput"
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        2688,
+        -16
+      ],
+      "id": "5a2b89ba-e622-487d-b1c5-a3fcdece7317",
+      "name": "Get Linked Items tool",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Y5FuwbdC73UQ2SmM",
+          "name": "Azure Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to get the Title and State of Azure DevOps work items. You must provide a single argument named ids, which must be a comma-separated list of numerical IDs (e.g., '12172,12171'). Always use this tool immediately after getting IDs from the Get Linked Items tool so you can provide the user with the actual titles and statuses.",
+        "url": "=https://dev.azure.com/{{$env.ADO_ORG}}/{{$env.ADO_PROJECT}}/_apis/wit/workitems",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "ids",
+              "value": "={{ ($fromAI('ids', 'Comma-separated list of numerical work item IDs ONLY - digits and commas, nothing else, e.g. 12172,12171. Reformat cleanly even if the user wrote it with \"and\"/periods/other separators. Use the exact ids returned by Get Linked Items - never guess.', 'string').match(/\\d+/g) || []).join(',') }}"
+            },
+            {
+              "name": "fields",
+              "value": "System.Id,System.Title,System.State,System.Description,Microsoft.VSTS.TCM.ReproSteps"
+            },
+            {
+              "name": "api-version",
+              "value": "={{$env.ADO_API_VERSION}}"
+            }
+          ]
+        },
+        "options": {},
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput"
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        2688,
+        192
+      ],
+      "id": "8cda66ee-6ad0-4181-b312-914db790cd16",
+      "name": "Get Work Item Details",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Y5FuwbdC73UQ2SmM",
+          "name": "Azure Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Search any workitem using name",
+        "method": "POST",
+        "url": "=https://dev.azure.com/{{$env.ADO_ORG}}/{{$env.ADO_PROJECT}}/_apis/wit/wiql?api-version={{$env.ADO_API_VERSION}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  {\n    \"query\": \"SELECT [System.Id], [System.Title], [System.WorkItemType] FROM WorkItems WHERE [System.Title] CONTAINS '\" + $fromAI('name', 'Concise search phrase - plain keyword(s) from the work item title only. No WIQL, no JSON, no quotes.', 'string').toString().replace(/'/g, \"''\") + \"' AND [System.State] <> 'Closed' ORDER BY [System.CreatedDate] DESC\"\n  }\n}}",
+        "options": {},
+        "optimizeResponse": true,
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput"
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        2688,
+        -432
+      ],
+      "id": "5ee0b264-75b3-44c9-bb12-2034f56fa967",
+      "name": "Search Work Items",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Y5FuwbdC73UQ2SmM",
+          "name": "Azure Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to update an existing Azure DevOps work item (Bug, Task, User Story, etc). Provide 'id' (the numerical work item ID, required) and at least one of: 'state' (new state, e.g. 'Active', 'Resolved', 'Closed') or 'comment' (text to append to the work item's discussion/history). NEVER hallucinate an id - get it from Search Work Items or Get Linked Items tool first.",
+        "method": "PATCH",
+        "url": "=https://dev.azure.com/{{$env.ADO_ORG}}/{{$env.ADO_PROJECT}}/_apis/wit/workitems/{{ $fromAI('id', 'Verified numerical work item id to update. Never guess.', 'string').toString().replace(/[^0-9]/g, '') }}?api-version={{$env.ADO_API_VERSION}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json-patch+json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  [\n    ...($fromAI('state', \"Optional new state, e.g. 'Active', 'Resolved', 'Closed'. Leave blank if not changing state.\", 'string', '') ? [{ \"op\": \"add\", \"path\": \"/fields/System.State\", \"value\": $fromAI('state', \"Optional new state, e.g. 'Active', 'Resolved', 'Closed'. Leave blank if not changing state.\", 'string', '') }] : []),\n    ...($fromAI('comment', 'Optional text to append to the work item history/discussion. Leave blank if not adding a comment.', 'string', '') ? [{ \"op\": \"add\", \"path\": \"/fields/System.History\", \"value\": $fromAI('comment', 'Optional text to append to the work item history/discussion. Leave blank if not adding a comment.', 'string', '') }] : [])\n  ]\n}}",
+        "options": {},
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput"
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        2688,
+        400
+      ],
+      "id": "7da86df9-e8e8-44e1-994f-d35bd4ea760c",
+      "name": "Update Work Item",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Y5FuwbdC73UQ2SmM",
+          "name": "Azure Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to list work items assigned to the current user (the account behind the configured Azure DevOps credential). Optionally provide 'state' (e.g. 'Active', 'Resolved') to filter to one state; if omitted, returns all non-Closed items assigned to the user. Do not pass any other arguments.",
+        "method": "POST",
+        "url": "=https://dev.azure.com/{{$env.ADO_ORG}}/{{$env.ADO_PROJECT}}/_apis/wit/wiql?api-version={{$env.ADO_API_VERSION}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  {\n    \"query\": \"SELECT [System.Id], [System.Title], [System.WorkItemType], [System.State] FROM WorkItems WHERE [System.AssignedTo] = @Me\" + ($fromAI('state', \"Optional single state to filter by, e.g. 'Active', 'Resolved'. Leave blank to get all non-Closed items.\", 'string', '') ? \" AND [System.State] = '\" + $fromAI('state', \"Optional single state to filter by, e.g. 'Active', 'Resolved'. Leave blank to get all non-Closed items.\", 'string', '').toString().replace(/'/g, \"''\") + \"'\" : \" AND [System.State] <> 'Closed'\") + \" ORDER BY [System.ChangedDate] DESC\"\n  }\n}}",
+        "options": {},
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput"
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        2688,
+        608
+      ],
+      "id": "7b1f02cb-9700-4e13-871c-4b28103da29e",
+      "name": "Get My Work Items",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Y5FuwbdC73UQ2SmM",
+          "name": "Azure Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to attach a piece of evidence to an existing work item as a hyperlink, when the user gives you a URL (e.g. a screenshot or log already hosted somewhere) rather than pasting the content inline. Provide 'id' (the numerical work item id) and 'evidence_url' (the URL to attach). This links to a URL - it does not upload binary files.",
+        "method": "PATCH",
+        "url": "=https://dev.azure.com/{{$env.ADO_ORG}}/{{$env.ADO_PROJECT}}/_apis/wit/workitems/{{ $fromAI('id', 'Verified numerical work item id to attach evidence to. Never guess.', 'string').toString().replace(/[^0-9]/g, '') }}?api-version={{$env.ADO_API_VERSION}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json-patch+json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  [\n    { \"op\": \"add\", \"path\": \"/relations/-\", \"value\": { \"rel\": \"Hyperlink\", \"url\": $fromAI('evidence_url', 'The URL of the evidence (screenshot/log) to attach, exactly as provided by the user.', 'string'), \"attributes\": { \"comment\": \"Evidence attached via QA Azure Buddy\" } } }\n  ]\n}}",
+        "options": {},
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput"
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        2688,
+        816
+      ],
+      "id": "d2f3d571-7770-473c-9a47-b8ed6bc03686",
+      "name": "Attach Evidence Link",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Y5FuwbdC73UQ2SmM",
+          "name": "Azure Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "You are a silent data-extraction step, not a conversational assistant. You only see the user's LATEST message in isolation - you have no memory of earlier turns. Output ONLY a single-line minified JSON object matching the schema below - no prose, no markdown, no code fences, nothing else.\n\nSchema:\n{\"intent\": \"create_bug\" | \"view_bugs\" | \"update_item\" | \"my_items\" | \"other\", \"parent_search_term\": string, \"work_item_id\": string, \"title\": string, \"repro_steps\": array of strings, \"expected_result\": string, \"actual_result\": string, \"evidence\": string, \"environment\": string, \"priority\": string, \"severity\": string, \"area_path\": string, \"iteration_path\": string, \"assigned_to\": string, \"state\": string, \"comment\": string}\n\nIntent rules:\n- \"create_bug\": the message clearly asks to file/create/log a new bug AND includes at least a title/summary and some description of the problem.\n- \"view_bugs\": the message clearly asks to see bugs/tasks linked to a parent work item AND includes a specific numeric work item id in `work_item_id`. If only a name/description is given (no numeric id), use \"other\" instead.\n- \"update_item\": the message clearly asks to change the state and/or add a comment to a specific work item AND includes a specific numeric id in `work_item_id` AND at least one of `state` or `comment`. If no numeric id is given, use \"other\" instead.\n- \"my_items\": the message clearly asks to see work items assigned to the user. `state` may optionally hold a single status to filter by.\n- \"other\": anything else, anything incomplete, or anything ambiguous.\n\nCRITICAL - do not guess on short or context-dependent replies: if the message is short, terse, or looks like it's answering a question you can't see (e.g. a bare number like \"12312\", \"yes\", \"the second one\", \"active\") rather than a complete standalone request, you MUST classify it as \"other\" even if it technically matches one of the patterns above (e.g. a bare number could satisfy view_bugs's numeric-id requirement, but is far more likely to be answering a prior clarifying question than a new view request). Only classify a specific intent when the message clearly, on its own, states a complete new request. When genuinely uncertain, always prefer \"other\" - a more capable assistant with full conversation memory will handle it correctly.\n\nGeneral rules:\n- Never invent values. Use an empty string (or empty array for repro_steps) for anything the message did not provide.\n- Output must be valid JSON and nothing else - no leading or trailing text."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1376,
+        -880
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6071",
+      "name": "Extract Intent"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($json.output || '').toString();\nlet parsed = null;\ntry {\n  const match = raw.match(/\\{[\\s\\S]*\\}/);\n  parsed = JSON.parse(match ? match[0] : raw);\n} catch (e) {\n  parsed = null;\n}\n\nif (!parsed || typeof parsed !== 'object') {\n  return [{ json: { parse_error: true, intent: 'other' } }];\n}\n\nreturn [{\n  json: {\n    parse_error: false,\n    intent: parsed.intent || 'other',\n    parent_search_term: parsed.parent_search_term || '',\n    work_item_id: (parsed.work_item_id || '').toString().replace(/[^0-9]/g, ''),\n    title: parsed.title || '',\n    repro_steps: Array.isArray(parsed.repro_steps) ? parsed.repro_steps : [],\n    expected_result: parsed.expected_result || '',\n    actual_result: parsed.actual_result || '',\n    evidence: parsed.evidence || '',\n    environment: parsed.environment || '',\n    priority: parsed.priority || '',\n    severity: parsed.severity || '',\n    area_path: parsed.area_path || '',\n    iteration_path: parsed.iteration_path || '',\n    assigned_to: parsed.assigned_to || '',\n    state: parsed.state || '',\n    comment: parsed.comment || ''\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        -880
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6072",
+      "name": "Parse Extraction"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "condition1",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "create_bug",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "create_bug"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "condition1",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "view_bugs",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "view_bugs"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "condition1",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "update_item",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "update_item"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "condition1",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "my_items",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "my_items"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        2208,
+        -880
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6073",
+      "name": "Route Intent"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://dev.azure.com/{{$env.ADO_ORG}}/{{$env.ADO_PROJECT}}/_apis/wit/wiql?api-version={{$env.ADO_API_VERSION}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  {\n    \"query\": \"SELECT [System.Id] FROM WorkItems WHERE [System.Title] CONTAINS '\" + ($json.parent_search_term || '').toString().replace(/'/g, \"''\") + \"' AND [System.State] <> 'Closed' ORDER BY [System.CreatedDate] DESC\"\n  }\n}}",
+        "options": {},
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput"
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2624,
+        -1080
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6074",
+      "name": "Search Parent",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Y5FuwbdC73UQ2SmM",
+          "name": "Azure Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ ($json.workItems || []).length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3040,
+        -1080
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6075",
+      "name": "Has Candidates?"
+    },
+    {
+      "parameters": {
+        "url": "=https://dev.azure.com/{{$env.ADO_ORG}}/{{$env.ADO_PROJECT}}/_apis/wit/workitems",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "ids",
+              "value": "={{ ($json.workItems || []).map(w => w.id).join(',') }}"
+            },
+            {
+              "name": "fields",
+              "value": "System.Id,System.Title,System.WorkItemType,System.State"
+            },
+            {
+              "name": "api-version",
+              "value": "={{$env.ADO_API_VERSION}}"
+            }
+          ]
+        },
+        "options": {},
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput"
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3456,
+        -1080
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6076",
+      "name": "Get Parent Candidates Details",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Y5FuwbdC73UQ2SmM",
+          "name": "Azure Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const searchTerm = (($('Parse Extraction').item.json.parent_search_term) || '').toLowerCase().trim();\nconst items = ($json.value || []).map(v => ({\n  id: v.id,\n  title: (v.fields && v.fields['System.Title']) || '',\n  type: (v.fields && v.fields['System.WorkItemType']) || ''\n}));\n\nfunction score(title) {\n  const t = title.toLowerCase();\n  if (!t) return 0;\n  if (t === searchTerm) return 1;\n  if (t.includes(searchTerm) || searchTerm.includes(t)) return 0.8;\n  const aWords = new Set(searchTerm.split(/\\s+/).filter(Boolean));\n  const bWords = new Set(t.split(/\\s+/).filter(Boolean));\n  const inter = [...aWords].filter(w => bWords.has(w)).length;\n  const union = new Set([...aWords, ...bWords]).size || 1;\n  return inter / union;\n}\n\nconst scored = items.map(it => ({ ...it, score: score(it.title) })).sort((a, b) => b.score - a.score);\nconst best = scored[0];\nconst second = scored[1];\nconst isResolved = !!(best && best.score >= 0.5 && (!second || (best.score - second.score) >= 0.15));\n\nreturn [{\n  json: {\n    resolved: isResolved ? 'yes' : 'no',\n    parent_id: isResolved ? best.id : '',\n    candidates: scored\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3872,
+        -1080
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6077",
+      "name": "Resolve Parent"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.resolved }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4288,
+        -1080
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6078",
+      "name": "Parent Resolved?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://dev.azure.com/{{$env.ADO_ORG}}/{{$env.ADO_PROJECT}}/_apis/wit/wiql?api-version={{$env.ADO_API_VERSION}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  {\n    \"query\": \"SELECT [System.Id] FROM WorkItems WHERE [System.Parent] = \" + ($json.parent_id || '').toString().replace(/[^0-9]/g, '') + \" ORDER BY [System.CreatedDate] DESC\"\n  }\n}}",
+        "options": {},
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput"
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4704,
+        -1080
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6079",
+      "name": "Get Linked Bugs",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Y5FuwbdC73UQ2SmM",
+          "name": "Azure Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ ($json.workItems || []).length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5120,
+        -1080
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6080",
+      "name": "Has Linked Bugs?"
+    },
+    {
+      "parameters": {
+        "url": "=https://dev.azure.com/{{$env.ADO_ORG}}/{{$env.ADO_PROJECT}}/_apis/wit/workitems",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "ids",
+              "value": "={{ ($json.workItems || []).map(w => w.id).join(',') }}"
+            },
+            {
+              "name": "fields",
+              "value": "System.Id,System.Title"
+            },
+            {
+              "name": "api-version",
+              "value": "={{$env.ADO_API_VERSION}}"
+            }
+          ]
+        },
+        "options": {},
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput"
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5536,
+        -1080
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6081",
+      "name": "Get Linked Bugs Details",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Y5FuwbdC73UQ2SmM",
+          "name": "Azure Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const newTitle = (($('Parse Extraction').item.json.title) || '').toLowerCase();\nconst items = ($json.value || []).map(v => ({ id: v.id, title: (v.fields && v.fields['System.Title']) || '' }));\n\nfunction jaccard(a, b) {\n  const aw = new Set(a.split(/\\s+/).filter(Boolean));\n  const bw = new Set(b.toLowerCase().split(/\\s+/).filter(Boolean));\n  const inter = [...aw].filter(w => bw.has(w)).length;\n  const union = new Set([...aw, ...bw]).size || 1;\n  return inter / union;\n}\n\nlet best = null;\nfor (const it of items) {\n  const s = jaccard(newTitle, it.title);\n  if (!best || s > best.score) best = { ...it, score: s };\n}\n\nconst duplicateFound = !!(best && best.score >= 0.45);\n\nreturn [{ json: { duplicate_found: duplicateFound ? 'yes' : 'no', duplicate_match: best } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5952,
+        -1080
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6082",
+      "name": "Duplicate Check"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.duplicate_found }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        6368,
+        -1080
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6083",
+      "name": "Duplicate Found?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Parse Extraction').item.json;\nconst steps = (d.repro_steps || []).map((s, i) => `${i + 1}. ${s}`).join('<br>');\nconst description =\n  `<b>Bug description:</b> ${d.title}<br><br>` +\n  `<b>Steps to reproduce:</b><br>${steps || 'Not provided'}<br><br>` +\n  `<b>Expected result:</b> ${d.expected_result || 'Not provided'}<br><br>` +\n  `<b>Actual result:</b> ${d.actual_result || 'Not provided'}<br><br>` +\n  `<b>Evidence:</b> ${d.evidence || 'Not provided'}<br><br>` +\n  `<b>Environment:</b> ${d.environment || 'Not provided'}`;\n\nconst parentId = $('Resolve Parent').item.json.parent_id;\nconst title = `[Bug] - ${d.title}`;\n\nconst ops = [\n  { op: 'add', path: '/fields/System.Title', value: title },\n  { op: 'add', path: '/fields/Microsoft.VSTS.TCM.ReproSteps', value: description },\n  { op: 'add', path: '/relations/-', value: { rel: 'System.LinkTypes.Hierarchy-Reverse', url: `https://dev.azure.com/${$env.ADO_ORG}/${$env.ADO_PROJECT}/_apis/wit/workItems/${parentId}` } }\n];\nif (d.priority) ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.Common.Priority', value: d.priority });\nif (d.severity) ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.Common.Severity', value: d.severity });\nif (d.area_path) ops.push({ op: 'add', path: '/fields/System.AreaPath', value: d.area_path });\nif (d.iteration_path) ops.push({ op: 'add', path: '/fields/System.IterationPath', value: d.iteration_path });\nif (d.assigned_to) ops.push({ op: 'add', path: '/fields/System.AssignedTo', value: d.assigned_to });\n\nreturn [{ json: { ops, parent_id: parentId, title } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6784,
+        -1080
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6084",
+      "name": "Build Bug Payload"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://dev.azure.com/{{$env.ADO_ORG}}/{{$env.ADO_PROJECT}}/_apis/wit/workitems/$Bug?api-version={{$env.ADO_API_VERSION}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json-patch+json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.ops }}",
+        "options": {},
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput"
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7200,
+        -1080
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6085",
+      "name": "Create Bug (Code Path)",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Y5FuwbdC73UQ2SmM",
+          "name": "Azure Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $json;\nconst parentId = $('Build Bug Payload').item.json.parent_id;\nconst title = $('Build Bug Payload').item.json.title;\n\nif (resp && typeof resp.id === 'number') {\n  return [{ json: { output: `Bug #${resp.id} created and linked to Parent #${parentId}.\\nTitle: ${title}` } }];\n}\n\nreturn [{ json: { output: `I couldn't create the bug automatically - Azure DevOps returned: ${JSON.stringify(resp).slice(0, 500)}` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7616,
+        -1080
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6086",
+      "name": "Build Success Message"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.work_item_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2624,
+        -680
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6087",
+      "name": "Has Target Id (View)?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://dev.azure.com/{{$env.ADO_ORG}}/{{$env.ADO_PROJECT}}/_apis/wit/wiql?api-version={{$env.ADO_API_VERSION}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  {\n    \"query\": \"SELECT [System.Id] FROM WorkItems WHERE [System.Parent] = \" + ($json.work_item_id || '').toString().replace(/[^0-9]/g, '') + \" ORDER BY [System.CreatedDate] DESC\"\n  }\n}}",
+        "options": {},
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput"
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3040,
+        -680
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6088",
+      "name": "Get Linked Bugs (View)",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Y5FuwbdC73UQ2SmM",
+          "name": "Azure Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ ($json.workItems || []).length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3456,
+        -680
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6089",
+      "name": "Has Linked Items (View)?"
+    },
+    {
+      "parameters": {
+        "url": "=https://dev.azure.com/{{$env.ADO_ORG}}/{{$env.ADO_PROJECT}}/_apis/wit/workitems",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "ids",
+              "value": "={{ ($json.workItems || []).map(w => w.id).join(',') }}"
+            },
+            {
+              "name": "fields",
+              "value": "System.Id,System.Title,System.WorkItemType,System.State"
+            },
+            {
+              "name": "api-version",
+              "value": "={{$env.ADO_API_VERSION}}"
+            }
+          ]
+        },
+        "options": {},
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput"
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3872,
+        -784
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6090",
+      "name": "Get Linked Bugs Details (View)",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Y5FuwbdC73UQ2SmM",
+          "name": "Azure Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = ($json.value || []).map(v => ({\n  id: v.id,\n  title: (v.fields && v.fields['System.Title']) || '',\n  type: (v.fields && v.fields['System.WorkItemType']) || '',\n  state: (v.fields && v.fields['System.State']) || ''\n}));\n\nconst parentId = $('Parse Extraction').item.json.work_item_id;\n\nif (!items.length) {\n  return [{ json: { output: `No linked work items found under #${parentId}.` } }];\n}\n\nconst header = '| ID | Title | Type | State |\\n|---|---|---|---|';\nconst rows = items.map(it => `| ${it.id} | ${it.title} | ${it.type} | ${it.state} |`).join('\\n');\n\nreturn [{ json: { output: `Work items linked to #${parentId}:\\n\\n${header}\\n${rows}` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4288,
+        -680
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6091",
+      "name": "Build View Table"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.state }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "id": "condition2",
+              "leftValue": "={{ $json.comment }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2624,
+        -280
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6092",
+      "name": "Has Update Fields?"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://dev.azure.com/{{$env.ADO_ORG}}/{{$env.ADO_PROJECT}}/_apis/wit/workitems/{{ ($json.work_item_id || '').toString().replace(/[^0-9]/g, '') }}?api-version={{$env.ADO_API_VERSION}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json-patch+json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  [\n    ...(($json.state || '') ? [{ \"op\": \"add\", \"path\": \"/fields/System.State\", \"value\": $json.state }] : []),\n    ...(($json.comment || '') ? [{ \"op\": \"add\", \"path\": \"/fields/System.History\", \"value\": $json.comment }] : [])\n  ]\n}}",
+        "options": {},
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput"
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3040,
+        -280
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6093",
+      "name": "Update Work Item (Code Path)",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Y5FuwbdC73UQ2SmM",
+          "name": "Azure Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $json;\nconst d = $('Parse Extraction').item.json;\n\nif (resp && typeof resp.id === 'number') {\n  const parts = [`Work item #${resp.id} updated.`];\n  if (d.state) parts.push(`New state: ${d.state}.`);\n  if (d.comment) parts.push('Comment added.');\n  return [{ json: { output: parts.join(' ') } }];\n}\n\nreturn [{ json: { output: `I couldn't update work item #${d.work_item_id} - Azure DevOps returned: ${JSON.stringify(resp).slice(0, 500)}` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3456,
+        -280
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6094",
+      "name": "Build Update Message"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://dev.azure.com/{{$env.ADO_ORG}}/{{$env.ADO_PROJECT}}/_apis/wit/wiql?api-version={{$env.ADO_API_VERSION}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  {\n    \"query\": \"SELECT [System.Id] FROM WorkItems WHERE [System.AssignedTo] = @Me\" + (($json.state || '') ? \" AND [System.State] = '\" + $json.state.toString().replace(/'/g, \"''\") + \"'\" : \" AND [System.State] <> 'Closed'\") + \" ORDER BY [System.ChangedDate] DESC\"\n  }\n}}",
+        "options": {},
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput"
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2624,
+        120
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6095",
+      "name": "Get My Work Items (Code Path)",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Y5FuwbdC73UQ2SmM",
+          "name": "Azure Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ ($json.workItems || []).length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3040,
+        120
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6096",
+      "name": "Has My Items?"
+    },
+    {
+      "parameters": {
+        "url": "=https://dev.azure.com/{{$env.ADO_ORG}}/{{$env.ADO_PROJECT}}/_apis/wit/workitems",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "ids",
+              "value": "={{ ($json.workItems || []).map(w => w.id).join(',') }}"
+            },
+            {
+              "name": "fields",
+              "value": "System.Id,System.Title,System.WorkItemType,System.State"
+            },
+            {
+              "name": "api-version",
+              "value": "={{$env.ADO_API_VERSION}}"
+            }
+          ]
+        },
+        "options": {},
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput"
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3456,
+        24
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6097",
+      "name": "Get My Work Items Details (Code Path)",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Y5FuwbdC73UQ2SmM",
+          "name": "Azure Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = ($json.value || []).map(v => ({\n  id: v.id,\n  title: (v.fields && v.fields['System.Title']) || '',\n  type: (v.fields && v.fields['System.WorkItemType']) || '',\n  state: (v.fields && v.fields['System.State']) || ''\n}));\n\nif (!items.length) {\n  return [{ json: { output: 'No matching work items found assigned to you.' } }];\n}\n\nconst header = '| ID | Title | Type | State |\\n|---|---|---|---|';\nconst rows = items.map(it => `| ${it.id} | ${it.title} | ${it.type} | ${it.state} |`).join('\\n');\n\nreturn [{ json: { output: `Your assigned work items:\\n\\n${header}\\n${rows}` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3872,
+        120
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6098",
+      "name": "Build My Items Table"
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = ($json.output || '').toString().trim();\n\nif (!text) {\n  return [{ json: { output: \"Sorry, I'm having trouble processing that right now (both the primary and fallback models failed to respond). Please try again in a moment.\" } }];\n}\n\nreturn [{ json: { output: text } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2208,
+        -496
+      ],
+      "id": "9f1a2b3c-4d5e-4f60-8a1b-2c3d4e5f6099",
+      "name": "Ensure Non-Empty Reply"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Extract Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Extract Intent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model (Fallback)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 1
+          },
+          {
+            "node": "Extract Intent",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Extract Intent": {
+      "main": [
+        [
+          {
+            "node": "Parse Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Extraction": {
+      "main": [
+        [
+          {
+            "node": "Route Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Intent": {
+      "main": [
+        [
+          {
+            "node": "Search Parent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Has Target Id (View)?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Has Update Fields?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get My Work Items (Code Path)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Target Id (View)?": {
+      "main": [
+        [
+          {
+            "node": "Get Linked Bugs (View)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Linked Bugs (View)": {
+      "main": [
+        [
+          {
+            "node": "Has Linked Items (View)?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Linked Items (View)?": {
+      "main": [
+        [
+          {
+            "node": "Get Linked Bugs Details (View)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build View Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Linked Bugs Details (View)": {
+      "main": [
+        [
+          {
+            "node": "Build View Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Update Fields?": {
+      "main": [
+        [
+          {
+            "node": "Update Work Item (Code Path)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Work Item (Code Path)": {
+      "main": [
+        [
+          {
+            "node": "Build Update Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get My Work Items (Code Path)": {
+      "main": [
+        [
+          {
+            "node": "Has My Items?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has My Items?": {
+      "main": [
+        [
+          {
+            "node": "Get My Work Items Details (Code Path)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build My Items Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get My Work Items Details (Code Path)": {
+      "main": [
+        [
+          {
+            "node": "Build My Items Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Parent": {
+      "main": [
+        [
+          {
+            "node": "Has Candidates?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Candidates?": {
+      "main": [
+        [
+          {
+            "node": "Get Parent Candidates Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Parent Candidates Details": {
+      "main": [
+        [
+          {
+            "node": "Resolve Parent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Parent": {
+      "main": [
+        [
+          {
+            "node": "Parent Resolved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parent Resolved?": {
+      "main": [
+        [
+          {
+            "node": "Get Linked Bugs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Linked Bugs": {
+      "main": [
+        [
+          {
+            "node": "Has Linked Bugs?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Linked Bugs?": {
+      "main": [
+        [
+          {
+            "node": "Get Linked Bugs Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Bug Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Linked Bugs Details": {
+      "main": [
+        [
+          {
+            "node": "Duplicate Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Duplicate Check": {
+      "main": [
+        [
+          {
+            "node": "Duplicate Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Duplicate Found?": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Bug Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Bug Payload": {
+      "main": [
+        [
+          {
+            "node": "Create Bug (Code Path)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Bug (Code Path)": {
+      "main": [
+        [
+          {
+            "node": "Build Success Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Ensure Non-Empty Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Bug": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Linked Items tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Work Item Details": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Work Items": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Work Item": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get My Work Items": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Evidence Link": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "b7635f58-64a5-486c-b098-a5d7eb28b955",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "daee155b040d8b98f3ce5f119ca3c2cbe5797b80ac99b3df285a563410c03dd7"
+  },
+  "nodeGroups": [],
+  "id": "BlUGVv2w077o5q9k",
+  "tags": []
+}
