@@ -39,8 +39,9 @@ DevOps configuration, and persisted chat history backed by MySQL.
 
 ### Configuration
 
-Copy `src/AzureBuddy.Api/appsettings.json` and fill in the placeholders below (or override via
-environment variables / `dotnet user-secrets` locally - never commit real values):
+Copy `src/AzureBuddy.Api/appsettings.Example.json` to `appsettings.json` (permanently gitignored -
+your real values never risk being committed) and fill in the placeholders below, or override via
+environment variables / `dotnet user-secrets` locally:
 
 | Key | What it is |
 |---|---|
