@@ -13,3 +13,14 @@ Thumbs.db
 # Editors
 .vscode/
 .idea/
+
+# .NET
+bin/
+obj/
+*.user
+.vs/
+appsettings.*.local.json
+
+# Data Protection keys encrypt PATs at rest - never commit them (losing/leaking them is either a
+# security incident or makes every stored PAT permanently unreadable).
+DataProtection-Keys/

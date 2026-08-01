@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AzureBuddy.Api/AzureBuddy.Api.csproj" />
+    <Project Path="src/AzureBuddy.Core/AzureBuddy.Core.csproj" />
+    <Project Path="src/AzureBuddy.Data/AzureBuddy.Data.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AzureBuddy.Tests/AzureBuddy.Tests.csproj" />
+  </Folder>
+</Solution>
