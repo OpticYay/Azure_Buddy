@@ -1,24 +1,28 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.Extensions.Configuration;
 
 namespace AzureBuddy.Data;
 
-/// <summary>
-/// Lets `dotnet ef migrations add` build an AppDbContext without running the actual web app (which is
-/// where the real connection string/DI setup lives). We pass ServerVersion.Create(...) with an
-/// explicit MySQL version instead of ServerVersion.AutoDetect(connectionString) specifically so that
-/// generating a migration doesn't require a live MySQL server to be reachable at design time - only
-/// running the app for real does.
-/// </summary>
 public sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<AppDbContext>
 {
     public AppDbContext CreateDbContext(string[] args)
     {
-        var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
+        // Build configuration the same way the real app does, so migrations use
+        // the same connection string as the running application - no separate
+        // hardcoded credentials to keep in sync.
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(Directory.GetCurrentDirectory())
+            .AddJsonFile("appsettings.json", optional: true)
+            .AddJsonFile("appsettings.Development.json", optional: true)
+            .Build();
 
-        optionsBuilder.UseMySql(
-            "server=localhost;database=azurebuddy;user=azurebuddy;password=placeholder",
-            new MySqlServerVersion(new Version(8, 0, 34)));
+        var connectionString = configuration.GetConnectionString("Default")
+            ?? throw new InvalidOperationException(
+                "No 'Default' connection string found in appsettings.json/appsettings.Development.json.");
+
+        var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
+        optionsBuilder.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 34)));
 
         return new AppDbContext(optionsBuilder.Options);
     }
