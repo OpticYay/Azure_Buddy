@@ -20,7 +20,8 @@ obj/
 *.user
 .vs/
 appsettings.*.local.json
-
+appsettings.Development.json
+*.json
 # Data Protection keys encrypt PATs at rest - never commit them (losing/leaking them is either a
 # security incident or makes every stored PAT permanently unreadable).
 DataProtection-Keys/
