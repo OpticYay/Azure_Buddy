@@ -30,16 +30,12 @@ public sealed class SettingsController : ControllerBase
         return Ok(view);
     }
 
+    // [ApiController]'s automatic model validation now rejects a missing/malformed request (see the
+    // [Required]/[Url] attributes on SaveAdoSettingsRequest) before this action body even runs - no
+    // manual null/empty checks needed here anymore.
     [HttpPut]
     public async Task<ActionResult<AdoSettingsView>> PutAsync(SaveAdoSettingsRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.OrganizationUrl) ||
-            string.IsNullOrWhiteSpace(request.DefaultProject) ||
-            string.IsNullOrWhiteSpace(request.PersonalAccessToken))
-        {
-            return BadRequest("OrganizationUrl, DefaultProject, and PersonalAccessToken are all required.");
-        }
-
         var view = await _adoConfigService.UpsertAsync(User.GetRequiredUserId(), request, cancellationToken);
         return Ok(view);
     }

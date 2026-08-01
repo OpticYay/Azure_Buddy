@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AzureBuddy.Core.AzureDevOps;
 using AzureBuddy.Core.Llm;
 using AzureBuddy.Core.Llm.Models;
 using AzureBuddy.Core.Routing;
@@ -130,7 +131,13 @@ public sealed class AzureBuddyAgent : IConversationalAgent
             var args = JsonDocument.Parse(toolCall.ArgumentsJson).RootElement;
             return await tool.InvokeAsync(args, cancellationToken);
         }
-        catch (Exception ex) when (ex is JsonException or AzureDevOps.AdoApiException)
+        // AdoNotConfiguredException is caught here now (previously it wasn't - it fell through
+        // uncaught and only got handled 3 layers up, in ChatController's catch around the whole
+        // IntentRouter.RouteAsync call). Catching it at the point of use means the failing tool call
+        // itself reports "ADO isn't configured" back to the model as a normal tool error, so the
+        // agent can weave that into a natural reply instead of the entire turn being replaced by one
+        // generic canned message.
+        catch (Exception ex) when (ex is JsonException or AdoApiException or AdoNotConfiguredException)
         {
             _logger.LogWarning(ex, "Tool {ToolName} failed.", toolCall.Name);
             return JsonSerializer.Serialize(new { error = ex.Message });

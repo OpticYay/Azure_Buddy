@@ -21,13 +21,9 @@ public sealed class MyItemsFlow
     {
         var connection = _connectionAccessor.Require();
 
-        var stateFilter = string.IsNullOrEmpty(extracted.State)
-            ? "AND [System.State] <> 'Closed'"
-            : $"AND [System.State] = '{EscapeWiql(extracted.State)}'";
-
         var ids = await _adoClient.QueryWiqlAsync(
             connection,
-            $"SELECT [System.Id] FROM WorkItems WHERE [System.AssignedTo] = @Me {stateFilter} ORDER BY [System.ChangedDate] DESC",
+            WiqlQueryBuilder.AssignedToMe(extracted.State),
             cancellationToken);
 
         if (ids.Count == 0)
@@ -47,6 +43,4 @@ public sealed class MyItemsFlow
 
         return FlowResult.Done($"Your assigned work items:\n\n{table}");
     }
-
-    private static string EscapeWiql(string value) => value.Replace("'", "''");
 }

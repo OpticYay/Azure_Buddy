@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using AzureBuddy.Core.Auth;
 using AzureBuddy.Core.AzureDevOps;
 using AzureBuddy.Core.Chat;
@@ -54,7 +55,14 @@ public sealed class ChatsController : ControllerBase
     public async Task<ActionResult<ChatSessionDetail>> CreateAsync(CreateSessionRequest request, CancellationToken cancellationToken)
     {
         var session = await _chatSessionService.CreateSessionAsync(User.GetRequiredUserId(), request.Title, cancellationToken);
-        return CreatedAtAction(nameof(GetAsync), new { sessionId = session.Id }, session);
+
+        // Created(string, object) builds the Location header from a literal URI instead of going
+        // through action-name link generation (CreatedAtAction) - the latter failed at runtime here
+        // ("No route matches the supplied values"), caught by an integration test
+        // (ChatsEndpointsTests.CreateSession_DefaultsTitleWhenNoneGiven) actually POSTing through the
+        // real routing pipeline, which a controller-level unit test calling CreateAsync directly
+        // wouldn't have exercised.
+        return Created($"/api/chats/{session.Id}", session);
     }
 
     [HttpDelete("{sessionId:guid}")]
@@ -76,7 +84,7 @@ public sealed class ChatsController : ControllerBase
     public async Task<IActionResult> AppendMessageAsync(
         Guid sessionId,
         [FromForm] ChatMessageRole role,
-        [FromForm] string content,
+        [FromForm, Required] string content,
         [FromForm] int? workItemId,
         IFormFile? screenshot,
         CancellationToken cancellationToken)

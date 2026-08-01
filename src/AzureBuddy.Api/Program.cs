@@ -26,6 +26,14 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// ---- Global exception handling ----
+// Without this, any exception that escapes a controller/service falls through to the framework
+// default - a stack-trace HTML page in Development, a bare empty 500 in Production - with no
+// consistent shape for API clients to parse. AddProblemDetails + the IExceptionHandler below give
+// every unhandled exception the same RFC 7807 JSON body regardless of where it was thrown.
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
+
 // ---- Database ----
 // MySQL via the Pomelo EF Core provider. ServerVersion.Create with an explicit version (rather than
 // ServerVersion.AutoDetect, which opens a connection at startup just to ask the server its version)
@@ -87,12 +95,19 @@ builder.Services.AddAuthorization(options =>
 // Fixed-window limiter on the auth endpoints only: 5 requests per minute per client IP. This is a
 // basic brute-force/registration-spam speed bump, not a substitute for account lockout (Identity's
 // lockout policy above already handles "too many wrong passwords for one account").
+//
+// The "Testing" environment gets an effectively unlimited permit count: WebApplicationFactory-based
+// integration tests all originate from the TestServer's single synthetic client IP, so a real-world
+// per-IP limit of 5/minute trips almost immediately once more than a handful of tests run against the
+// same factory instance - this isn't a workaround for a bug, it's the same limiter correctly doing its
+// job against traffic that (unlike real clients) has no IP diversity. Production behavior is unchanged.
+var authRateLimit = builder.Environment.IsEnvironment("Testing") ? int.MaxValue : 5;
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.AddFixedWindowLimiter(RateLimiterPolicies.Auth, limiterOptions =>
     {
-        limiterOptions.PermitLimit = 5;
+        limiterOptions.PermitLimit = authRateLimit;
         limiterOptions.Window = TimeSpan.FromMinutes(1);
         limiterOptions.QueueLimit = 0;
     });
@@ -128,6 +143,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// Registered first (before routing/auth/anything else that could throw) so it wraps the entire
+// request pipeline - any exception from any downstream middleware or controller gets caught here.
+app.UseExceptionHandler();
+
 app.UseHttpsRedirection();
 
 app.UseRateLimiter();
@@ -139,3 +158,9 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+// Top-level statements generate an internal "Program" class by default. Making it public (partial,
+// empty - it's purely a marker) is the standard ASP.NET Core pattern for letting integration tests
+// use WebApplicationFactory<Program> to spin up this exact app in-memory with swapped-out config/DI
+// (e.g. an in-memory database instead of real MySQL) - see tests/AzureBuddy.Tests/Integration/.
+public partial class Program;

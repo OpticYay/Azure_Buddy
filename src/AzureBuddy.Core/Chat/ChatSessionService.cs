@@ -15,20 +15,21 @@ namespace AzureBuddy.Core.Chat;
 public sealed class ChatSessionService
 {
     private const int MaxTitleLength = 60;
+    private const string DefaultTitle = "New conversation";
 
     private readonly AppDbContext _dbContext;
-    private readonly IAdoClient _adoClient;
+    private readonly IAdoAttachmentService _adoAttachmentService;
     private readonly AdoConnectionContextAccessor _connectionAccessor;
     private readonly ILogger<ChatSessionService> _logger;
 
     public ChatSessionService(
         AppDbContext dbContext,
-        IAdoClient adoClient,
+        IAdoAttachmentService adoAttachmentService,
         AdoConnectionContextAccessor connectionAccessor,
         ILogger<ChatSessionService> logger)
     {
         _dbContext = dbContext;
-        _adoClient = adoClient;
+        _adoAttachmentService = adoAttachmentService;
         _connectionAccessor = connectionAccessor;
         _logger = logger;
     }
@@ -67,7 +68,7 @@ public sealed class ChatSessionService
         var session = new ChatSession
         {
             UserId = userId,
-            Title = string.IsNullOrWhiteSpace(title) ? "New conversation" : Truncate(title)
+            Title = string.IsNullOrWhiteSpace(title) ? DefaultTitle : Truncate(title)
         };
 
         _dbContext.ChatSessions.Add(session);
@@ -121,11 +122,13 @@ public sealed class ChatSessionService
     }
 
     /// <summary>
-    /// The screenshot flow: forward the image bytes straight to Azure DevOps as a work-item attachment,
-    /// link it to the work item, and store only the resulting URL - never the bytes. Bytes only ever
-    /// live in the `screenshotBytes` parameter for the duration of this call; nothing here writes them
-    /// to disk, a field, or any longer-lived collection, and the parameter goes out of scope (eligible
-    /// for GC) as soon as this method returns.
+    /// The screenshot flow: delegate to IAdoAttachmentService to forward the image bytes straight to
+    /// Azure DevOps and get back a URL, then store only that URL - never the bytes. This method never
+    /// touches the raw ADO API shape itself (that's IAdoAttachmentService's job); its own job is purely
+    /// "did the upload succeed, and what message do we record either way." Bytes only ever live in the
+    /// `screenshotBytes` parameter for the duration of this call - nothing here writes them to disk, a
+    /// field, or any longer-lived collection, and the parameter goes out of scope (eligible for GC) as
+    /// soon as this method returns.
     ///
     /// If the ADO call fails, we still write a ChatMessage - but one whose content is the error and
     /// whose AdoAttachmentUrl stays null, so the chat history honestly reflects "this failed" instead
@@ -152,30 +155,15 @@ public sealed class ChatSessionService
 
         try
         {
-            var attachment = await _adoClient.CreateAttachmentAsync(connection, fileName, screenshotBytes, cancellationToken);
-
-            // Link the uploaded attachment to the work item so it shows up on the ADO work item itself,
-            // not just floating as an orphaned attachment.
-            await _adoClient.UpdateWorkItemAsync(
-                connection,
-                workItemId,
-                new[]
-                {
-                    JsonPatchOperation.Add("/relations/-", new
-                    {
-                        rel = "AttachedFile",
-                        url = attachment.Url,
-                        attributes = new { comment = "Screenshot attached via chat" }
-                    })
-                },
-                cancellationToken);
+            var attachmentUrl = await _adoAttachmentService.AttachScreenshotAsync(
+                connection, workItemId, fileName, screenshotBytes, cancellationToken);
 
             var message = new ChatMessage
             {
                 SessionId = session.Id,
                 Role = ChatMessageRole.User,
                 Content = content,
-                AdoAttachmentUrl = attachment.Url,
+                AdoAttachmentUrl = attachmentUrl,
                 WorkItemId = workItemId
             };
 
@@ -207,7 +195,7 @@ public sealed class ChatSessionService
 
         // First message in a session becomes its title (like most chat UIs), so the session list is
         // browsable without opening every conversation.
-        if (session.Title == "New conversation" && message.Role == ChatMessageRole.User)
+        if (session.Title == DefaultTitle && message.Role == ChatMessageRole.User)
         {
             session.Title = Truncate(message.Content);
         }

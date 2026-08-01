@@ -89,25 +89,39 @@ public sealed class UserAdoConfigService
 
     public async Task<TestConnectionResult> TestConnectionAsync(string userId, CancellationToken cancellationToken = default)
     {
-        var context = await GetConnectionContextAsync(userId, cancellationToken);
-        if (context is null)
-        {
-            return new TestConnectionResult(false, "No Azure DevOps settings saved yet.");
-        }
-
+        // Everything that can fail here - decrypting the stored PAT, and the ADO call itself - is
+        // inside this one try. Previously only AdoApiException was caught, which meant a network
+        // failure (DNS, unreachable host, or the Polly retry policy giving up and rethrowing the
+        // original HttpRequestException/TaskCanceledException - AdoClient.TestConnectionAsync doesn't
+        // route through ReadOrThrowAsync, the only place that translates failures into AdoApiException)
+        // or a lost Data Protection key ring would throw straight through this method as an unhandled
+        // exception, producing a bare 500 instead of a clean TestConnectionResult(false, ...).
         try
         {
+            var context = await GetConnectionContextAsync(userId, cancellationToken);
+            if (context is null)
+            {
+                return new TestConnectionResult(false, "No Azure DevOps settings saved yet.");
+            }
+
             var success = await _adoClient.TestConnectionAsync(context, cancellationToken);
             return success
                 ? new TestConnectionResult(true, null)
                 : new TestConnectionResult(false, "Azure DevOps rejected the request - check the organization URL, project name, and PAT.");
         }
-        catch (AdoApiException ex)
+        catch (Exception ex) when (ex is AdoApiException or HttpRequestException or TaskCanceledException or CryptographicException)
         {
             _logger.LogWarning(ex, "ADO test-connection failed for user {UserId}.", userId);
-            return new TestConnectionResult(false, ex.Message);
+            return new TestConnectionResult(false, DescribeFailure(ex));
         }
     }
+
+    private static string DescribeFailure(Exception ex) => ex switch
+    {
+        CryptographicException => "Your stored Azure DevOps token could not be read - please re-enter your PAT.",
+        HttpRequestException or TaskCanceledException => "Could not reach Azure DevOps - check the organization URL and your network connection.",
+        _ => ex.Message
+    };
 
     private Task<UserAdoSettings?> FindByUserAsync(string userId, CancellationToken cancellationToken) =>
         _dbContext.UserAdoSettings.SingleOrDefaultAsync(s => s.UserId == userId, cancellationToken);

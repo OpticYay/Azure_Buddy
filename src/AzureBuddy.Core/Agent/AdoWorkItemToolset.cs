@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using AzureBuddy.Core.AzureDevOps;
+using AzureBuddy.Core.Common;
 
 namespace AzureBuddy.Core.Agent;
 
@@ -11,6 +12,8 @@ namespace AzureBuddy.Core.Agent;
 /// as the n8n tool nodes fed raw HTTP responses back to the model - the agent's system prompt already
 /// tells it how to read that shape. Every call resolves the current user's ADO connection from
 /// AdoConnectionContextAccessor (set once per request by the controller) rather than any global config.
+/// WIQL query shapes come from WiqlQueryBuilder and relation-building from AdoRelationOps - shared with
+/// the deterministic flows in Routing/Flows/*, which need the same queries/links independently.
 /// </summary>
 public sealed class AdoWorkItemToolset
 {
@@ -27,10 +30,7 @@ public sealed class AdoWorkItemToolset
     {
         var connection = _connectionAccessor.Require();
         var name = GetString(args, "name");
-        var ids = await _adoClient.QueryWiqlAsync(
-            connection,
-            $"SELECT [System.Id], [System.Title], [System.WorkItemType] FROM WorkItems WHERE [System.Title] CONTAINS '{EscapeWiql(name)}' AND [System.State] <> 'Closed' ORDER BY [System.CreatedDate] DESC",
-            ct);
+        var ids = await _adoClient.QueryWiqlAsync(connection, WiqlQueryBuilder.SearchByTitle(name), ct);
 
         if (ids.Count == 0)
         {
@@ -46,17 +46,13 @@ public sealed class AdoWorkItemToolset
         var connection = _connectionAccessor.Require();
         var title = GetString(args, "title");
         var description = GetString(args, "description");
-        var parentId = DigitsOnly(GetString(args, "parent_id"));
+        var parentId = TextUtils.DigitsOnly(GetString(args, "parent_id"));
 
         var ops = new List<JsonPatchOperation>
         {
             JsonPatchOperation.Add($"/fields/{AdoFields.Title}", title),
             JsonPatchOperation.Add($"/fields/{AdoFields.ReproSteps}", description),
-            JsonPatchOperation.Add("/relations/-", new
-            {
-                rel = "System.LinkTypes.Hierarchy-Reverse",
-                url = $"{connection.OrganizationUrl.TrimEnd('/')}/{connection.Project}/_apis/wit/workItems/{parentId}"
-            })
+            AdoRelationOps.ParentLink($"{connection.OrganizationUrl.TrimEnd('/')}/{connection.Project}/_apis/wit/workItems/{parentId}")
         };
 
         AddOptionalField(ops, args, "priority", AdoFields.Priority);
@@ -79,12 +75,14 @@ public sealed class AdoWorkItemToolset
     public async Task<string> GetLinkedItemsAsync(JsonElement args, CancellationToken ct)
     {
         var connection = _connectionAccessor.Require();
-        var parentId = DigitsOnly(GetString(args, "parent_id"));
-        var ids = await _adoClient.QueryWiqlAsync(
-            connection,
-            $"SELECT [System.Id], [System.Title], [System.WorkItemType], [System.State], [System.CreatedDate] FROM WorkItems WHERE [System.Parent] = {parentId} ORDER BY [System.CreatedDate] DESC",
-            ct);
+        var parentId = TextUtils.DigitsOnly(GetString(args, "parent_id"));
 
+        if (!int.TryParse(parentId, out var parentIdInt))
+        {
+            return JsonSerializer.Serialize(new { error = "No valid numerical parent_id provided." });
+        }
+
+        var ids = await _adoClient.QueryWiqlAsync(connection, WiqlQueryBuilder.ChildrenOf(parentIdInt), ct);
         return JsonSerializer.Serialize(ids);
     }
 
@@ -118,7 +116,7 @@ public sealed class AdoWorkItemToolset
     public async Task<string> UpdateWorkItemAsync(JsonElement args, CancellationToken ct)
     {
         var connection = _connectionAccessor.Require();
-        var id = DigitsOnly(GetString(args, "id"));
+        var id = TextUtils.DigitsOnly(GetString(args, "id"));
         var state = GetOptionalString(args, "state");
         var comment = GetOptionalString(args, "comment");
 
@@ -146,14 +144,8 @@ public sealed class AdoWorkItemToolset
     {
         var connection = _connectionAccessor.Require();
         var state = GetOptionalString(args, "state");
-        var stateFilter = string.IsNullOrEmpty(state)
-            ? "AND [System.State] <> 'Closed'"
-            : $"AND [System.State] = '{EscapeWiql(state)}'";
 
-        var ids = await _adoClient.QueryWiqlAsync(
-            connection,
-            $"SELECT [System.Id], [System.Title], [System.WorkItemType], [System.State] FROM WorkItems WHERE [System.AssignedTo] = @Me {stateFilter} ORDER BY [System.ChangedDate] DESC",
-            ct);
+        var ids = await _adoClient.QueryWiqlAsync(connection, WiqlQueryBuilder.AssignedToMe(state), ct);
 
         if (ids.Count == 0)
         {
@@ -167,7 +159,7 @@ public sealed class AdoWorkItemToolset
     public async Task<string> AttachEvidenceLinkAsync(JsonElement args, CancellationToken ct)
     {
         var connection = _connectionAccessor.Require();
-        var id = DigitsOnly(GetString(args, "id"));
+        var id = TextUtils.DigitsOnly(GetString(args, "id"));
         var evidenceUrl = GetString(args, "evidence_url");
 
         if (!int.TryParse(id, out var idInt))
@@ -177,12 +169,7 @@ public sealed class AdoWorkItemToolset
 
         var ops = new List<JsonPatchOperation>
         {
-            JsonPatchOperation.Add("/relations/-", new
-            {
-                rel = "Hyperlink",
-                url = evidenceUrl,
-                attributes = new { comment = "Evidence attached via QA Azure Buddy" }
-            })
+            AdoRelationOps.EvidenceLink(evidenceUrl, "Evidence attached via QA Azure Buddy")
         };
 
         try
@@ -213,8 +200,4 @@ public sealed class AdoWorkItemToolset
 
     private static string? GetOptionalString(JsonElement args, string name) =>
         args.TryGetProperty(name, out var v) ? v.GetString() : null;
-
-    private static string DigitsOnly(string value) => Regex.Replace(value, "[^0-9]", "");
-
-    private static string EscapeWiql(string value) => value.Replace("'", "''");
 }

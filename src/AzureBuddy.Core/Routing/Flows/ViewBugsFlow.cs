@@ -19,7 +19,10 @@ public sealed class ViewBugsFlow
 
     public async Task<FlowResult> ExecuteAsync(ExtractedIntent extracted, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(extracted.WorkItemId))
+        // int.TryParse (not int.Parse) here defensively - WorkItemId is digits-only by construction
+        // (IntentExtractor strips non-digits), but an overflow on an implausibly long id string
+        // shouldn't throw an uncaught FormatException/OverflowException through this flow.
+        if (!int.TryParse(extracted.WorkItemId, out var workItemId))
         {
             return FlowResult.FallThroughToAgent();
         }
@@ -28,7 +31,7 @@ public sealed class ViewBugsFlow
 
         var linkedIds = await _adoClient.QueryWiqlAsync(
             connection,
-            $"SELECT [System.Id] FROM WorkItems WHERE [System.Parent] = {extracted.WorkItemId} ORDER BY [System.CreatedDate] DESC",
+            WiqlQueryBuilder.ChildrenOf(workItemId),
             cancellationToken);
 
         if (linkedIds.Count == 0)

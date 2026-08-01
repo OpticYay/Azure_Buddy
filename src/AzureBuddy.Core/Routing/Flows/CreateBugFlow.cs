@@ -30,7 +30,7 @@ public sealed class CreateBugFlow
 
         var parentIds = await _adoClient.QueryWiqlAsync(
             connection,
-            $"SELECT [System.Id] FROM WorkItems WHERE [System.Title] CONTAINS '{EscapeWiql(extracted.ParentSearchTerm)}' AND [System.State] <> 'Closed' ORDER BY [System.CreatedDate] DESC",
+            WiqlQueryBuilder.SearchByTitle(extracted.ParentSearchTerm),
             cancellationToken);
 
         if (parentIds.Count == 0)
@@ -58,7 +58,7 @@ public sealed class CreateBugFlow
 
         var linkedBugIds = await _adoClient.QueryWiqlAsync(
             connection,
-            $"SELECT [System.Id] FROM WorkItems WHERE [System.Parent] = {parentId} ORDER BY [System.CreatedDate] DESC",
+            WiqlQueryBuilder.ChildrenOf(parentId),
             cancellationToken);
 
         if (linkedBugIds.Count > 0)
@@ -93,11 +93,7 @@ public sealed class CreateBugFlow
         {
             JsonPatchOperation.Add($"/fields/{AdoFields.Title}", title),
             JsonPatchOperation.Add($"/fields/{AdoFields.ReproSteps}", description),
-            JsonPatchOperation.Add("/relations/-", new
-            {
-                rel = "System.LinkTypes.Hierarchy-Reverse",
-                url = $"{connection.OrganizationUrl.TrimEnd('/')}/{connection.Project}/_apis/wit/workItems/{parentId}"
-            })
+            AdoRelationOps.ParentLink($"{connection.OrganizationUrl.TrimEnd('/')}/{connection.Project}/_apis/wit/workItems/{parentId}")
         };
 
         if (!string.IsNullOrEmpty(extracted.Priority)) ops.Add(JsonPatchOperation.Add($"/fields/{AdoFields.Priority}", extracted.Priority));
@@ -133,6 +129,4 @@ public sealed class CreateBugFlow
             $"<b>Evidence:</b> {(string.IsNullOrEmpty(extracted.Evidence) ? "Not provided" : extracted.Evidence)}<br><br>" +
             $"<b>Environment:</b> {(string.IsNullOrEmpty(extracted.Environment) ? "Not provided" : extracted.Environment)}";
     }
-
-    private static string EscapeWiql(string value) => (value ?? string.Empty).Replace("'", "''");
 }

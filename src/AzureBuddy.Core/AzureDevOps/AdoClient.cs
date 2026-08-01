@@ -21,6 +21,16 @@ public sealed class AdoClient : IAdoClient
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private const string JsonPatchMediaType = "application/json-patch+json";
 
+    // Named instead of inlined per-method so the API surface this client covers is visible at a
+    // glance, and a typo in a path shows up as a compile-time-visible constant, not a buried literal.
+    private static class Paths
+    {
+        public const string Wiql = "_apis/wit/wiql";
+        public const string WorkItems = "_apis/wit/workitems";
+        public const string Attachments = "_apis/wit/attachments";
+        public const string WorkItemTypes = "_apis/wit/workitemtypes";
+    }
+
     private readonly HttpClient _httpClient;
     private readonly AdoOptions _options;
     private readonly ILogger<AdoClient> _logger;
@@ -34,7 +44,7 @@ public sealed class AdoClient : IAdoClient
 
     public async Task<IReadOnlyList<int>> QueryWiqlAsync(AdoConnectionContext connection, string wiqlQuery, CancellationToken cancellationToken = default)
     {
-        var url = BuildUrl(connection, "_apis/wit/wiql");
+        var url = BuildUrl(connection, Paths.Wiql);
         var response = await SendAsync(connection, () => new HttpRequestMessage(HttpMethod.Post, url)
         {
             Content = JsonContent.Create(new WiqlQueryRequest { Query = wiqlQuery }, options: JsonOptions)
@@ -56,7 +66,7 @@ public sealed class AdoClient : IAdoClient
             return Array.Empty<WorkItem>();
         }
 
-        var url = BuildUrl(connection, $"_apis/wit/workitems?ids={string.Join(",", idList)}&fields={string.Join(",", fields)}");
+        var url = BuildUrl(connection, $"{Paths.WorkItems}?ids={string.Join(",", idList)}&fields={string.Join(",", fields)}");
         var response = await SendAsync(connection, () => new HttpRequestMessage(HttpMethod.Get, url), cancellationToken);
         var result = await ReadOrThrowAsync<WorkItemsBatchResponse>(response, cancellationToken);
         return result.Value;
@@ -68,7 +78,7 @@ public sealed class AdoClient : IAdoClient
         IReadOnlyList<JsonPatchOperation> operations,
         CancellationToken cancellationToken = default)
     {
-        var url = BuildUrl(connection, $"_apis/wit/workitems/${workItemType}");
+        var url = BuildUrl(connection, $"{Paths.WorkItems}/${workItemType}");
         var response = await SendJsonPatchAsync(connection, HttpMethod.Post, url, operations, cancellationToken);
         return await ReadOrThrowAsync<WorkItem>(response, cancellationToken);
     }
@@ -79,7 +89,7 @@ public sealed class AdoClient : IAdoClient
         IReadOnlyList<JsonPatchOperation> operations,
         CancellationToken cancellationToken = default)
     {
-        var url = BuildUrl(connection, $"_apis/wit/workitems/{id}");
+        var url = BuildUrl(connection, $"{Paths.WorkItems}/{id}");
         var response = await SendJsonPatchAsync(connection, HttpMethod.Patch, url, operations, cancellationToken);
         return await ReadOrThrowAsync<WorkItem>(response, cancellationToken);
     }
@@ -90,7 +100,7 @@ public sealed class AdoClient : IAdoClient
         byte[] content,
         CancellationToken cancellationToken = default)
     {
-        var url = BuildUrl(connection, $"_apis/wit/attachments?fileName={Uri.EscapeDataString(fileName)}");
+        var url = BuildUrl(connection, $"{Paths.Attachments}?fileName={Uri.EscapeDataString(fileName)}");
 
         var response = await SendAsync(connection, () => new HttpRequestMessage(HttpMethod.Post, url)
         {
@@ -109,7 +119,7 @@ public sealed class AdoClient : IAdoClient
     {
         // A minimal, side-effect-free call: listing work item types for the configured project only
         // succeeds if the org/project exist and the PAT has at least read access.
-        var url = BuildUrl(connection, "_apis/wit/workitemtypes");
+        var url = BuildUrl(connection, Paths.WorkItemTypes);
         var response = await SendAsync(connection, () => new HttpRequestMessage(HttpMethod.Get, url), cancellationToken);
         return response.IsSuccessStatusCode;
     }

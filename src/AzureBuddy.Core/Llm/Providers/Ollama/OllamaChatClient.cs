@@ -18,7 +18,7 @@ public sealed class OllamaChatClient : IChatCompletionClient
     private readonly OllamaOptions _options;
     private readonly ILogger<OllamaChatClient> _logger;
 
-    public string ProviderName => "Ollama";
+    public string ProviderName => LlmProviderNames.Ollama;
 
     public OllamaChatClient(HttpClient httpClient, IOptions<LlmOptions> options, ILogger<OllamaChatClient> logger)
     {

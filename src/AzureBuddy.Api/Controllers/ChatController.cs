@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using AzureBuddy.Core.Auth;
 using AzureBuddy.Core.AzureDevOps;
 using AzureBuddy.Core.Chat;
@@ -9,7 +10,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace AzureBuddy.Api.Controllers;
 
-public sealed record ChatRequest(Guid? SessionId, string Message);
+// [Required] targets the parameter, not "[property: ...]" - see AuthModels.cs's RegisterRequest
+// comment for why that placement matters on a record's primary constructor.
+public sealed record ChatRequest(Guid? SessionId, [Required] string Message);
 public sealed record ChatResponse(Guid SessionId, string Reply);
 
 /// <summary>
@@ -44,14 +47,12 @@ public sealed class ChatController : ControllerBase
         _connectionAccessor = connectionAccessor;
     }
 
+    // [Required] on ChatRequest.Message (validated automatically by [ApiController]) covers both null
+    // and whitespace-only values - RequiredAttribute trims strings before checking - so no manual
+    // check is needed here anymore.
     [HttpPost]
     public async Task<ActionResult<ChatResponse>> PostAsync([FromBody] ChatRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Message))
-        {
-            return BadRequest("Message is required.");
-        }
-
         var userId = User.GetRequiredUserId();
 
         // Populate the per-request ADO connection *before* anything that might call Azure DevOps runs.

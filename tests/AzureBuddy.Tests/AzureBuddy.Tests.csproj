@@ -11,6 +11,8 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.10" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.10" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="WireMock.Net" Version="2.13.0" />
     <PackageReference Include="xunit" Version="2.5.3" />
@@ -23,6 +25,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AzureBuddy.Core\AzureBuddy.Core.csproj" />
+    <ProjectReference Include="..\..\src\AzureBuddy.Api\AzureBuddy.Api.csproj" />
+    <ProjectReference Include="..\..\src\AzureBuddy.Data\AzureBuddy.Data.csproj" />
   </ItemGroup>
 
 </Project>

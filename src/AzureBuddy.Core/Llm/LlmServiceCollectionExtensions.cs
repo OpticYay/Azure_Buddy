@@ -8,11 +8,12 @@ namespace AzureBuddy.Core.Llm;
 public static class LlmServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers each concrete provider named in Llm:Providers plus a keyed lookup, and registers
-    /// IChatCompletionClient as a FallbackChatClient over them in the configured order.
-    ///
-    /// Adding a new provider later: implement IChatCompletionClient, register it in the switch below
-    /// under its own name, and add that name to appsettings' Llm:Providers list.
+    /// Registers each concrete provider as a keyed service (key = its LlmProviderNames constant), and
+    /// registers IChatCompletionClient as a FallbackChatClient that resolves the configured Llm:Providers
+    /// list, in order, via GetRequiredKeyedService. Keyed DI (instead of the old switch-on-string) means
+    /// adding a new provider is pure addition - implement IChatCompletionClient and add its two
+    /// registration lines below - rather than editing an existing branch of control flow (Open/Closed
+    /// Principle: the fallback-chain-building logic itself never needs to change for a new provider).
     /// </summary>
     public static IServiceCollection AddLlmProviders(this IServiceCollection services, IConfiguration configuration)
     {
@@ -20,6 +21,11 @@ public static class LlmServiceCollectionExtensions
 
         services.AddHttpClient<GeminiChatClient>();
         services.AddHttpClient<OllamaChatClient>();
+
+        services.AddKeyedTransient<IChatCompletionClient>(
+            LlmProviderNames.Gemini, (sp, _) => sp.GetRequiredService<GeminiChatClient>());
+        services.AddKeyedTransient<IChatCompletionClient>(
+            LlmProviderNames.Ollama, (sp, _) => sp.GetRequiredService<OllamaChatClient>());
 
         services.AddSingleton<IChatCompletionClient>(sp =>
         {
@@ -31,7 +37,9 @@ public static class LlmServiceCollectionExtensions
                     "Llm:Providers must list at least one provider name (e.g. [\"Gemini\", \"Ollama\"]).");
             }
 
-            var chain = options.Providers.Select(name => ResolveProvider(sp, name)).ToList();
+            var chain = options.Providers
+                .Select(name => sp.GetRequiredKeyedService<IChatCompletionClient>(name))
+                .ToList();
 
             return new FallbackChatClient(
                 chain,
@@ -40,13 +48,4 @@ public static class LlmServiceCollectionExtensions
 
         return services;
     }
-
-    private static IChatCompletionClient ResolveProvider(IServiceProvider sp, string providerName) => providerName switch
-    {
-        "Gemini" => sp.GetRequiredService<GeminiChatClient>(),
-        "Ollama" => sp.GetRequiredService<OllamaChatClient>(),
-        _ => throw new InvalidOperationException(
-            $"Unknown LLM provider '{providerName}' in Llm:Providers. " +
-            "Register it in LlmServiceCollectionExtensions.ResolveProvider.")
-    };
 }

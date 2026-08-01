@@ -21,6 +21,8 @@ public static class AdoServiceCollectionExtensions
         // connection for this request" needs.
         services.AddScoped<AdoConnectionContextAccessor>();
 
+        services.AddScoped<IAdoAttachmentService, AdoAttachmentService>();
+
         return services;
     }
 

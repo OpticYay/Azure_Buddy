@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using AzureBuddy.Core.Common;
 using AzureBuddy.Core.Llm;
 using AzureBuddy.Core.Llm.Models;
 using Microsoft.Extensions.Logging;
@@ -93,7 +94,7 @@ public sealed class IntentExtractor
         {
             Intent = ParseIntent(parsed.Intent),
             ParentSearchTerm = parsed.ParentSearchTerm ?? string.Empty,
-            WorkItemId = DigitsOnly(parsed.WorkItemId),
+            WorkItemId = TextUtils.DigitsOnly(parsed.WorkItemId),
             Title = parsed.Title ?? string.Empty,
             ReproSteps = (IReadOnlyList<string>?)parsed.ReproSteps ?? Array.Empty<string>(),
             ExpectedResult = parsed.ExpectedResult ?? string.Empty,
@@ -118,9 +119,6 @@ public sealed class IntentExtractor
         "my_items" => ChatIntent.MyItems,
         _ => ChatIntent.Other
     };
-
-    private static string DigitsOnly(string? value) =>
-        value is null ? string.Empty : Regex.Replace(value, "[^0-9]", "");
 
     private static readonly JsonSerializerOptions JsonSerializerOptions = new(JsonSerializerDefaults.Web);
 

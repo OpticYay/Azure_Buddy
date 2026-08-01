@@ -17,7 +17,7 @@ public sealed class GeminiChatClient : IChatCompletionClient
     private readonly GeminiOptions _options;
     private readonly ILogger<GeminiChatClient> _logger;
 
-    public string ProviderName => "Gemini";
+    public string ProviderName => LlmProviderNames.Gemini;
 
     public GeminiChatClient(HttpClient httpClient, IOptions<LlmOptions> options, ILogger<GeminiChatClient> logger)
     {
