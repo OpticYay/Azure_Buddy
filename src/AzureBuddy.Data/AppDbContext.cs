@@ -19,6 +19,7 @@ public sealed class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<ChatSession> ChatSessions => Set<ChatSession>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<LlmSettings> LlmSettings => Set<LlmSettings>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -55,6 +56,17 @@ public sealed class AppDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<ChatMessage>()
             .Property(m => m.Role)
             .HasConversion<string>();
+
+        // LlmSettings is a singleton row - its Id is always exactly LlmSettings.SingletonId (1), by
+        // application convention, never database-assigned. Without ValueGeneratedNever(), EF Core
+        // configures Id as an auto-increment identity column by default for an int primary key - a
+        // freshly created table happens to hand out 1 as ITS first auto-generated value too, so this
+        // bug wouldn't show up in casual testing, but it breaks the moment the row is ever deleted and
+        // re-inserted (the next auto-increment value would be 2, not 1), silently orphaning the code
+        // everywhere that assumes "the row's Id" and "SingletonId" are the same thing.
+        builder.Entity<LlmSettings>()
+            .Property(s => s.Id)
+            .ValueGeneratedNever();
 
         builder.Entity<RefreshToken>()
             .HasOne(t => t.User)

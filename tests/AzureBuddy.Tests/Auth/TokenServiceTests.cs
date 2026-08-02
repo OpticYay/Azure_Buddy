@@ -30,7 +30,7 @@ public class TokenServiceTests
         var service = CreateService();
         var user = CreateUser();
 
-        var result = service.CreateAccessToken(user);
+        var result = service.CreateAccessToken(user, Array.Empty<string>());
         var token = new JwtSecurityTokenHandler().ReadJwtToken(result.Token);
 
         Assert.Equal("user-123", token.Claims.Single(c => c.Type == JwtRegisteredClaimNames.Sub).Value);
@@ -41,7 +41,7 @@ public class TokenServiceTests
     public void CreateAccessToken_SetsIssuerAndAudienceFromOptions()
     {
         var service = CreateService();
-        var token = new JwtSecurityTokenHandler().ReadJwtToken(service.CreateAccessToken(CreateUser()).Token);
+        var token = new JwtSecurityTokenHandler().ReadJwtToken(service.CreateAccessToken(CreateUser(), Array.Empty<string>()).Token);
 
         Assert.Equal("AzureBuddyTests", token.Issuer);
         Assert.Contains("AzureBuddyTests", token.Audiences);
@@ -53,7 +53,7 @@ public class TokenServiceTests
         var service = CreateService(accessTokenMinutes: 15);
         var before = DateTime.UtcNow;
 
-        var result = service.CreateAccessToken(CreateUser());
+        var result = service.CreateAccessToken(CreateUser(), Array.Empty<string>());
 
         var expectedExpiry = before.AddMinutes(15);
         Assert.True(Math.Abs((result.ExpiresAtUtc - expectedExpiry).TotalSeconds) < 5,
@@ -66,13 +66,34 @@ public class TokenServiceTests
         var service = CreateService();
         var user = CreateUser();
 
-        var token1 = new JwtSecurityTokenHandler().ReadJwtToken(service.CreateAccessToken(user).Token);
-        var token2 = new JwtSecurityTokenHandler().ReadJwtToken(service.CreateAccessToken(user).Token);
+        var token1 = new JwtSecurityTokenHandler().ReadJwtToken(service.CreateAccessToken(user, Array.Empty<string>()).Token);
+        var token2 = new JwtSecurityTokenHandler().ReadJwtToken(service.CreateAccessToken(user, Array.Empty<string>()).Token);
 
         var jti1 = token1.Claims.Single(c => c.Type == JwtRegisteredClaimNames.Jti).Value;
         var jti2 = token2.Claims.Single(c => c.Type == JwtRegisteredClaimNames.Jti).Value;
 
         Assert.NotEqual(jti1, jti2);
+    }
+
+    [Fact]
+    public void CreateAccessToken_IncludesOneRoleClaimPerRole()
+    {
+        var service = CreateService();
+        var token = new JwtSecurityTokenHandler().ReadJwtToken(
+            service.CreateAccessToken(CreateUser(), new[] { "Admin", "Beta" }).Token);
+
+        var roleClaims = token.Claims.Where(c => c.Type == "role").Select(c => c.Value).ToList();
+        Assert.Equal(new[] { "Admin", "Beta" }, roleClaims);
+    }
+
+    [Fact]
+    public void CreateAccessToken_NoRoles_HasNoRoleClaims()
+    {
+        var service = CreateService();
+        var token = new JwtSecurityTokenHandler().ReadJwtToken(
+            service.CreateAccessToken(CreateUser(), Array.Empty<string>()).Token);
+
+        Assert.DoesNotContain(token.Claims, c => c.Type == "role");
     }
 
     [Fact]

@@ -2,7 +2,6 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using AzureBuddy.Core.Llm.Models;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace AzureBuddy.Core.Llm.Providers.Gemini;
 
@@ -19,10 +18,14 @@ public sealed class GeminiChatClient : IChatCompletionClient
 
     public string ProviderName => LlmProviderNames.Gemini;
 
-    public GeminiChatClient(HttpClient httpClient, IOptions<LlmOptions> options, ILogger<GeminiChatClient> logger)
+    // Reads ILlmSettingsProvider.Current at CONSTRUCTION time, not per-call - safe because
+    // AddHttpClient<GeminiChatClient>() registers this class as transient, and its DI registration
+    // (see LlmServiceCollectionExtensions) resolves a fresh instance for every chat completion, so
+    // "read once, at construction" and "read fresh every request" end up meaning the same thing here.
+    public GeminiChatClient(HttpClient httpClient, ILlmSettingsProvider settingsProvider, ILogger<GeminiChatClient> logger)
     {
         _httpClient = httpClient;
-        _options = options.Value.Gemini;
+        _options = settingsProvider.Current.Gemini;
         _logger = logger;
     }
 

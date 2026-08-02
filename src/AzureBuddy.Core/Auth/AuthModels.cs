@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using AzureBuddy.Core.Common;
 
 namespace AzureBuddy.Core.Auth;
 
@@ -33,9 +34,9 @@ public sealed record AuthTokens(string AccessToken, DateTime AccessTokenExpiresA
 public sealed record AuthResult
 {
     public bool Success { get; init; }
-    public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<ApiError> Errors { get; init; } = Array.Empty<ApiError>();
     public AuthTokens? Tokens { get; init; }
 
     public static AuthResult Ok(AuthTokens tokens) => new() { Success = true, Tokens = tokens };
-    public static AuthResult Fail(params string[] errors) => new() { Success = false, Errors = errors };
+    public static AuthResult Fail(params ApiError[] errors) => new() { Success = false, Errors = errors };
 }

@@ -2,7 +2,6 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using AzureBuddy.Core.Llm.Models;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace AzureBuddy.Core.Llm.Providers.Ollama;
 
@@ -20,10 +19,13 @@ public sealed class OllamaChatClient : IChatCompletionClient
 
     public string ProviderName => LlmProviderNames.Ollama;
 
-    public OllamaChatClient(HttpClient httpClient, IOptions<LlmOptions> options, ILogger<OllamaChatClient> logger)
+    // See GeminiChatClient's constructor comment - reading ILlmSettingsProvider.Current here at
+    // construction time is equivalent to reading it fresh per-request, because this typed client is
+    // transient and gets re-resolved for every chat completion.
+    public OllamaChatClient(HttpClient httpClient, ILlmSettingsProvider settingsProvider, ILogger<OllamaChatClient> logger)
     {
         _httpClient = httpClient;
-        _options = options.Value.Ollama;
+        _options = settingsProvider.Current.Ollama;
         _logger = logger;
     }
 

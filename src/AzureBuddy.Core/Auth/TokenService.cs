@@ -25,22 +25,36 @@ public sealed class TokenService
     }
 
     /// <summary>
-    /// Builds a signed JWT containing the user's id (as the "sub" claim) and email. Every authenticated
-    /// endpoint reads the user's identity back out of this token's claims via HttpContext.User - never
-    /// from a client-supplied userId in the request body/query string, which is what makes IDOR
-    /// (Insecure Direct Object Reference - one user fetching another user's data by guessing an id)
-    /// impossible for anything keyed off "the current user".
+    /// Builds a signed JWT containing the user's id (as the "sub" claim), email, and current roles.
+    /// Every authenticated endpoint reads the user's identity back out of this token's claims via
+    /// HttpContext.User - never from a client-supplied userId in the request body/query string, which
+    /// is what makes IDOR (Insecure Direct Object Reference - one user fetching another user's data by
+    /// guessing an id) impossible for anything keyed off "the current user". Role-gated endpoints
+    /// ([Authorize(Roles = "Admin")], e.g. LlmSettingsController) work the same way: ASP.NET Core reads
+    /// the "role" claim(s) below out of the validated token, not a fresh database lookup per request.
+    ///
+    /// One consequence worth knowing: a role change (promoting/demoting an admin) only takes effect
+    /// once the affected user's access token is next refreshed - roles are baked into the token at
+    /// mint time, same as everything else in it. Given this app's short access-token lifetime
+    /// (Jwt:AccessTokenMinutes) and that admin promotion is a rare, deliberate action, that lag is an
+    /// acceptable tradeoff over re-querying the database on every single request just to check roles.
     /// </summary>
-    public AccessTokenResult CreateAccessToken(ApplicationUser user)
+    public AccessTokenResult CreateAccessToken(ApplicationUser user, IEnumerable<string> roles)
     {
         var expiresAtUtc = DateTime.UtcNow.AddMinutes(_options.AccessTokenMinutes);
 
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim(JwtRegisteredClaimNames.Sub, user.Id),
-            new Claim(JwtRegisteredClaimNames.Email, user.Email ?? string.Empty),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            new(JwtRegisteredClaimNames.Sub, user.Id),
+            new(JwtRegisteredClaimNames.Email, user.Email ?? string.Empty),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
+
+        // A short claim type ("role"), not the long ClaimTypes.Role URI - keeps the decoded JWT
+        // payload readable, and it's what the Angular frontend's decodeAccessTokenClaims reads
+        // directly as `claims['role']`. Multiple Claim entries with the same type serialize as a JSON
+        // array automatically, which is how a user with more than one role would show up.
+        claims.AddRange(roles.Select(role => new Claim("role", role)));
 
         var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey));
         var credentials = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);
