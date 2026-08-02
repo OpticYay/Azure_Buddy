@@ -25,7 +25,7 @@ public sealed class IntentExtractor
 
         Intent rules:
         - "create_bug": the message clearly asks to file/create/log a new bug AND includes at least a title/summary and some description of the problem.
-        - "view_bugs": the message clearly asks to see bugs/tasks linked to a parent work item AND includes a specific numeric work item id in `work_item_id`. If only a name/description is given (no numeric id), use "other" instead.
+        - "view_bugs": the message asks for a plain LIST of the bugs/tasks linked to a parent work item (e.g. "what bugs are under #123", "show me bugs linked to 123") AND includes a specific numeric work item id in `work_item_id`. If only a name/description is given (no numeric id), use "other" instead. If the message asks for anything beyond a bare list - summarizing, describing, explaining, or getting the full details/content of those bugs - use "other" instead, even though it also mentions a numeric id: this fast path can only ever return an ID/Title/Type/State table, never each bug's actual description, so a request that needs the description has to go to the fuller tool-calling path instead.
         - "update_item": the message clearly asks to change the state and/or add a comment to a specific work item AND includes a specific numeric id in `work_item_id` AND at least one of `state` or `comment`. If no numeric id is given, use "other" instead.
         - "my_items": the message clearly asks to see work items assigned to the user. `state` may optionally hold a single status to filter by.
         - "other": anything else, anything incomplete, or anything ambiguous.
@@ -65,6 +65,7 @@ public sealed class IntentExtractor
             return ExtractedIntent.Fallback();
         }
 
+        _logger.LogDebug("Intent extraction raw output for {Message}: {Raw}", latestUserMessage, result.Text);
         return Parse(result.Text);
     }
 

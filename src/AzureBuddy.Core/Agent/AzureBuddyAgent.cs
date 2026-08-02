@@ -41,8 +41,8 @@ public sealed class AzureBuddyAgent : IConversationalAgent
         Scenario B: View Bugs
         STRICT 2-STEP CHAIN:
         1. `get_linked_items`: Pass numerical Task/Parent ID to get attached Bug IDs.
-        2. `get_work_item_details`: Pass comma-separated IDs from Step 1. NEVER guess titles/statuses.
-        3. Output final results to user as a markdown table (ID | Title | State): Actual Bug IDs, Titles, and States. No placeholders.
+        2. `get_work_item_details`: Pass comma-separated IDs from Step 1. NEVER guess titles/statuses. This tool's response already includes each item's Description and ReproSteps, not just title/state - read them, don't ignore them.
+        3. If the user asked only to see/list the bugs, output a markdown table (ID | Title | State): actual bug IDs, titles, and states, no placeholders. If the user asked to summarize, describe, or get details/content of the bugs, output a short prose summary per bug (still tied to its ID, e.g. "#123 - <one or two sentences from its actual Description>") instead of - or in addition to - the bare table: a table of just IDs/titles/states doesn't answer "summarize" or "what do these bugs say," and the description text is already sitting in the tool response from step 2.
 
         Scenario C: Update or Close a Work Item
         1. Identify the numerical work item id. Get it from `search_work_items` or `get_linked_items` first - NEVER hallucinate an id.
