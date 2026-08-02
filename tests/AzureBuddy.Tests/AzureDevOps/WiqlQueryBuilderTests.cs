@@ -60,6 +60,20 @@ public class WiqlQueryBuilderTests
     }
 
     [Theory]
+    [InlineData("open")]
+    [InlineData("Open")]
+    [InlineData(" OPEN ")]
+    public void AssignedToMe_OpenState_TreatedSameAsNoState(string state)
+    {
+        // "open" isn't a real ADO state on any standard process template - filtering for it literally
+        // (`[System.State] = 'open'`) would always return zero rows instead of "everything not closed."
+        var query = WiqlQueryBuilder.AssignedToMe(state);
+
+        Assert.Contains("[System.State] <> 'Closed'", query);
+        Assert.DoesNotContain("[System.State] = 'open'", query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
     [InlineData(null, "")]
     [InlineData("", "")]
     [InlineData("plain", "plain")]

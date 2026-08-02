@@ -167,17 +167,22 @@ export class MessageComposer implements OnDestroy {
     this.sending.set(true);
     this.errorMessage.set(null);
     this.awaitingReply.emit(true);
+    // Clear the box the moment the message is on its way, not once the reply comes back - the model
+    // can take several seconds to answer, and leaving the sent text sitting in the box reads as "did
+    // this actually send?" rather than "Buddy is working on it." Restore it on failure below so a
+    // dropped request doesn't cost the user their typed message.
+    this.messageText.set('');
 
     this.chatService.sendMessage(this.sessionId(), text).subscribe({
       next: () => {
         this.sending.set(false);
-        this.messageText.set('');
         this.awaitingReply.emit(false);
         this.messageSent.emit();
       },
       error: () => {
         this.sending.set(false);
         this.awaitingReply.emit(false);
+        this.messageText.set(text);
         this.errorMessage.set('Could not send that message. Please try again.');
       },
     });

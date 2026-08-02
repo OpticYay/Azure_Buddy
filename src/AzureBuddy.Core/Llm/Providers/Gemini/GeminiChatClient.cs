@@ -162,6 +162,16 @@ public sealed class GeminiChatClient : IChatCompletionClient
             }
             else if (part.TryGetProperty("text", out var textPart))
             {
+                // Gemini's "thinking" models return their reasoning as its own part, marked
+                // `"thought": true`, ahead of the actual answer part in the same array - both have a
+                // `text` property, so without this check we'd silently concatenate the model's internal
+                // reasoning onto the front of every reply (confirmed against a real response: "The user
+                // said 'hi'... I should respond politely.Hello! How can I help...", no separator between
+                // the two, because that's literally just two text parts joined with nothing in between).
+                if (part.TryGetProperty("thought", out var thoughtFlag) && thoughtFlag.ValueKind == JsonValueKind.True)
+                {
+                    continue;
+                }
                 text = (text ?? string.Empty) + textPart.GetString();
             }
         }

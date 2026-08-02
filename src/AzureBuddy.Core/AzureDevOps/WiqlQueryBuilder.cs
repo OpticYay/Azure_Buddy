@@ -24,8 +24,12 @@ public static class WiqlQueryBuilder
         $"SELECT [System.Id], [System.Title], [System.WorkItemType], [System.State] FROM WorkItems " +
         $"WHERE [System.AssignedTo] = @Me {StateFilter(state)} ORDER BY [System.ChangedDate] DESC";
 
+    // "open" is how people ask for "not finished yet" in plain English, but it isn't an actual ADO
+    // state on any standard process template (states are things like New/Active/Resolved/Closed) - so
+    // treating it as a literal state to match returns zero rows every time, not "everything open" as
+    // asked. Fold it into the same "not Closed" default the no-state case already uses.
     private static string StateFilter(string? state) =>
-        string.IsNullOrEmpty(state)
+        string.IsNullOrEmpty(state) || state.Trim().Equals("open", StringComparison.OrdinalIgnoreCase)
             ? "AND [System.State] <> 'Closed'"
             : $"AND [System.State] = '{Escape(state)}'";
 
