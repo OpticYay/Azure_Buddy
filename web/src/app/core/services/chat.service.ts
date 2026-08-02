@@ -10,6 +10,7 @@ import {
   ChatSessionSummary,
   CreateSessionRequest,
   PagedResult,
+  RenameSessionRequest,
 } from '../models/chat.models';
 
 const CHATS_BASE_URL = `${environment.apiUrl}/api/chats`;
@@ -35,6 +36,11 @@ export class ChatService {
 
   deleteSession(sessionId: string): Observable<void> {
     return this.http.delete<void>(`${CHATS_BASE_URL}/${sessionId}`);
+  }
+
+  renameSession(sessionId: string, title: string): Observable<ChatSessionSummary> {
+    const request: RenameSessionRequest = { title };
+    return this.http.put<ChatSessionSummary>(`${CHATS_BASE_URL}/${sessionId}/title`, request);
   }
 
   /** The "smart" path: POST /chat routes the message through the backend's deterministic flows /

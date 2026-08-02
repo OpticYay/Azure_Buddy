@@ -65,6 +65,14 @@ public sealed class ChatsController : ControllerBase
         return Created($"/api/chats/{session.Id}", session);
     }
 
+    [HttpPut("{sessionId:guid}/title")]
+    public async Task<ActionResult<ChatSessionSummary>> RenameAsync(
+        Guid sessionId, RenameSessionRequest request, CancellationToken cancellationToken)
+    {
+        var renamed = await _chatSessionService.RenameSessionAsync(User.GetRequiredUserId(), sessionId, request.Title, cancellationToken);
+        return renamed is null ? NotFound() : Ok(renamed);
+    }
+
     [HttpDelete("{sessionId:guid}")]
     public async Task<IActionResult> DeleteAsync(Guid sessionId, CancellationToken cancellationToken)
     {

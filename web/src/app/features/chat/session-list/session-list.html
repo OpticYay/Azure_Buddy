@@ -51,16 +51,46 @@
                  media query collapse the rail on a narrow screen without the component having to
                  know the viewport width - see the breakpoint at the end of session-list.css. -->
             <span class="session__initial">{{ initialOf(session.title) }}</span>
-            <span class="session__title label">{{ session.title }}</span>
-            <span class="session__time label">{{ session.updatedAt | date: 'd MMM' }}</span>
-            <button
-              type="button"
-              class="session__remove label"
-              title="Delete conversation"
-              (click)="deleteSession(session, $event)"
-            >
-              ×
-            </button>
+            @if (renamingId() === session.id) {
+              <input
+                #renameField
+                class="session__rename-field label"
+                type="text"
+                [ngModel]="renameText()"
+                (ngModelChange)="renameText.set($event)"
+                (click)="$event.stopPropagation()"
+                (keydown.enter)="commitRename(session)"
+                (keydown.escape)="cancelRename()"
+                (blur)="commitRename(session)"
+              />
+            } @else {
+              <span class="session__title label">{{ session.title }}</span>
+              <span class="session__time label">{{ session.updatedAt | date: 'd MMM' }}</span>
+              <button
+                type="button"
+                class="session__rename label"
+                title="Rename conversation"
+                (click)="startRename(session, $event)"
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                  <path
+                    d="M11.3 1.3a1 1 0 0 1 1.4 0l2 2a1 1 0 0 1 0 1.4l-7.6 7.6-3.4.7.7-3.4 7-7Z"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.3"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="session__remove label"
+                title="Delete conversation"
+                (click)="deleteSession(session, $event)"
+              >
+                ×
+              </button>
+            }
           </a>
         </li>
       }

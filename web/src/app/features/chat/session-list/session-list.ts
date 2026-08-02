@@ -1,5 +1,6 @@
-import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 
 import { ChatService } from '../../../core/services/chat.service';
@@ -19,7 +20,7 @@ const NARROW_SCREEN = '(max-width: 720px)';
 // Like everything else here it must be explicitly imported since components are standalone.
 @Component({
   selector: 'app-session-list',
-  imports: [RouterLink, RouterLinkActive, DatePipe],
+  imports: [RouterLink, RouterLinkActive, DatePipe, FormsModule],
   templateUrl: './session-list.html',
   styleUrl: './session-list.css',
   animations: [sidebarWidth, listStagger],
@@ -67,6 +68,16 @@ export class SessionList implements OnInit {
   private currentPage = 0;
   readonly hasMore = signal(false);
   readonly loadingMore = signal(false);
+
+  /** Which session (by id) is currently showing its title as an editable field instead of a link -
+   * null when nothing is being renamed. A signal (not a plain field) for the same zoneless reason as
+   * message-composer's messageText: the rename input's value is written programmatically (seeded from
+   * the session's current title) when editing starts, not typed fresh, so a plain field write
+   * wouldn't reliably reach the DOM. */
+  readonly renamingId = signal<string | null>(null);
+  readonly renameText = signal('');
+
+  @ViewChild('renameField') private renameFieldRef?: ElementRef<HTMLInputElement>;
 
   ngOnInit(): void {
     this.loadNextPage(true);
@@ -129,6 +140,55 @@ export class SessionList implements OnInit {
         this.creatingNew.set(false);
         this.loadError.set('Could not start a new chat.');
       },
+    });
+  }
+
+  /** Opens the inline rename field for one row, seeded with its current title - not the empty string,
+   * since renaming is an edit, not "type a new title from scratch." */
+  startRename(session: ChatSessionSummary, event: Event): void {
+    event.stopPropagation();
+    event.preventDefault();
+    this.renamingId.set(session.id);
+    this.renameText.set(session.title);
+
+    // Same reasoning as message-composer's prefill(): the input doesn't exist in the DOM yet on the
+    // same tick this signal write happens (it's behind an @if keyed to renamingId), so focusing and
+    // selecting its text has to wait one tick for Angular to actually render it.
+    queueMicrotask(() => {
+      const field = this.renameFieldRef?.nativeElement;
+      field?.focus();
+      field?.select();
+    });
+  }
+
+  cancelRename(): void {
+    this.renamingId.set(null);
+  }
+
+  /** Enter commits, blur commits (so clicking away doesn't silently discard an edit the way pressing
+   * Escape deliberately does), Escape cancels - see the template's (keydown.escape). */
+  commitRename(session: ChatSessionSummary): void {
+    if (this.renamingId() !== session.id) {
+      // Already committed/cancelled by another event on the same field (e.g. Enter firing before the
+      // blur it also triggers gets a chance to run) - without this guard the second call would send a
+      // redundant rename request.
+      return;
+    }
+
+    const title = this.renameText().trim();
+    this.renamingId.set(null);
+
+    if (!title || title === session.title) {
+      return;
+    }
+
+    this.chatService.renameSession(session.id, title).subscribe({
+      next: (renamed) => {
+        this.sessions.update((existing) =>
+          existing.map((s) => (s.id === session.id ? { ...s, title: renamed.title } : s)),
+        );
+      },
+      error: () => this.loadError.set('Could not rename that conversation.'),
     });
   }
 
