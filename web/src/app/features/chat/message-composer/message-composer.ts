@@ -32,6 +32,16 @@ export class MessageComposer implements OnDestroy {
    * has its own "Sending…" button state already and doesn't produce an agent reply to wait for. */
   readonly awaitingReply = output<boolean>();
 
+  /** Fired the moment a text send actually goes out, carrying the text itself - lets MessageThread
+   * show the user's own message immediately instead of waiting for the round trip to finish and the
+   * whole session to reload. Paired with messageFailed below for the one case that needs undoing. */
+  readonly messageSubmitted = output<string>();
+
+  /** Fired if the text send comes back as an error, so MessageThread can drop the optimistic message
+   * it added on messageSubmitted - the text itself is already restored to the field by sendText()
+   * below, so leaving it in the log too would show the same message twice. */
+  readonly messageFailed = output<void>();
+
   // ── Why these are signals, not plain string fields ──────────────────────────────────────────────
   // This app runs ZONELESS (there's no zone.js dependency - Angular 22's default). Zoneless change
   // detection only re-renders when something it actually watches changes: a signal write, an event
@@ -172,6 +182,7 @@ export class MessageComposer implements OnDestroy {
     // this actually send?" rather than "Buddy is working on it." Restore it on failure below so a
     // dropped request doesn't cost the user their typed message.
     this.messageText.set('');
+    this.messageSubmitted.emit(text);
 
     this.chatService.sendMessage(this.sessionId(), text).subscribe({
       next: () => {
@@ -183,6 +194,7 @@ export class MessageComposer implements OnDestroy {
         this.sending.set(false);
         this.awaitingReply.emit(false);
         this.messageText.set(text);
+        this.messageFailed.emit();
         this.errorMessage.set('Could not send that message. Please try again.');
       },
     });

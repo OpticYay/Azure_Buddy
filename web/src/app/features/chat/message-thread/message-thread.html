@@ -53,6 +53,8 @@
   <app-message-composer
     [sessionId]="sessionId()"
     (messageSent)="onMessageSent()"
+    (messageSubmitted)="onMessageSubmitted($event)"
+    (messageFailed)="onMessageFailed()"
     (awaitingReply)="onAwaitingReplyChange($event)"
   />
 </div>

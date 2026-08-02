@@ -42,7 +42,17 @@ export class MessageThread {
   readonly sessionId = input.required<string>();
 
   private readonly messages = signal<ChatMessageView[]>([]);
-  readonly displayMessages = computed(() => this.messages().map(classifyMessage));
+
+  /** The user's own message, shown the instant it's sent rather than waiting for the round trip to
+   * finish and the whole session to reload (see onMessageSubmitted below) - cleared once that reload
+   * brings back the real, persisted version, or if the send actually failed. */
+  private readonly pendingMessage = signal<ChatMessageView | null>(null);
+
+  readonly displayMessages = computed(() => {
+    const pending = this.pendingMessage();
+    const all = pending ? [...this.messages(), pending] : this.messages();
+    return all.map(classifyMessage);
+  });
 
   readonly loading = signal(true);
   readonly loadError = signal<string | null>(null);
@@ -91,6 +101,7 @@ export class MessageThread {
     this.chatService.getSession(sessionId).subscribe({
       next: (detail) => {
         this.messages.set(detail.messages);
+        this.pendingMessage.set(null);
         this.loading.set(false);
         this.scrollToBottom();
       },
@@ -109,6 +120,27 @@ export class MessageThread {
    * tool's message volume, though a high-traffic chat app would want to append optimistically instead. */
   onMessageSent(): void {
     this.loadMessages(this.sessionId());
+  }
+
+  /** Builds a throwaway ChatMessageView for the pending bubble - never sent anywhere, just enough shape
+   * for classifyMessage/MessageItem to render it exactly like a real user message. Its id only needs to
+   * be unique for @for's `track`, which is why Date.now() (not a real backend id) is good enough. */
+  onMessageSubmitted(text: string): void {
+    this.pendingMessage.set({
+      id: `pending-${Date.now()}`,
+      role: 'User',
+      content: text,
+      adoAttachmentUrl: null,
+      workItemId: null,
+      type: 'Text',
+      table: null,
+      createdAt: new Date().toISOString(),
+    });
+    this.scrollToBottom();
+  }
+
+  onMessageFailed(): void {
+    this.pendingMessage.set(null);
   }
 
   onAwaitingReplyChange(awaiting: boolean): void {
