@@ -61,11 +61,9 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 // AllowCredentials is needed because the Angular app sends "Authorization: Bearer <token>" (an
 // Authorization header counts as a credentialed request for CORS purposes even without cookies), and
 // AllowCredentials cannot be combined with AllowAnyOrigin - the origin list must be explicit.
-// Both origins point at the same dev server - "localhost" resolves to IPv6 (::1) first on most
-// Windows setups, which is where the flaky-HMR-websocket / spurious full-page-reload problem some
-// dev machines hit lives (some antivirus/EDR agents interfere with IPv6 loopback specifically,
-// dropping the long-lived WS connection ng serve's live-reload depends on); "127.0.0.1" forces IPv4
-// and sidesteps it. Both are allowed so switching between them never means also editing this file.
+// Both spellings of the dev server's own address are allowed because either can be what's in the
+// browser's address bar, and the browser sends whichever one it used as the Origin header - a
+// mismatch there is a blocked request, not a fallback. Nothing here depends on which one you use.
 var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
     ?? new[] { "http://localhost:4200", "http://127.0.0.1:4200" };
 
