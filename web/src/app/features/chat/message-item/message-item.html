@@ -27,11 +27,11 @@
     -->
     @switch (displayMessage().type) {
       @case ('text') {
-        <p class="prose">{{ displayMessage().message.content }}</p>
+        <div class="prose" [innerHTML]="displayMessage().message.content | markdownLite"></div>
       }
 
       @case ('error') {
-        <p class="prose">{{ displayMessage().message.content }}</p>
+        <div class="prose" [innerHTML]="displayMessage().message.content | markdownLite"></div>
       }
 
       @case ('confirmation') {
@@ -48,7 +48,7 @@
                 <span class="stamp stamp--lg">#{{ confirmation.workItemId }}</span>
               }
             </div>
-            <p class="prose">{{ confirmation.summary }}</p>
+            <div class="prose" [innerHTML]="confirmation.summary | markdownLite"></div>
             @if (workItemUrl(confirmation.workItemId); as url) {
               <a class="record__link" [href]="url" target="_blank" rel="noopener">Open work item</a>
             }

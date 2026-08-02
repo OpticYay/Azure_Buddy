@@ -106,11 +106,52 @@
   border-color: var(--fail-rule);
 }
 
+/* .prose wraps whatever markdown-lite.pipe.ts rendered - real <p>/<ul>/<li> elements, not raw text
+   with newlines, so spacing comes from real block-level margins now rather than white-space:
+   pre-wrap faking it. The plain-text screenshot caption (the one .prose user without the pipe -
+   someone's own typed text, not a markdown source) still wants pre-wrap to keep its line breaks,
+   so that's kept as the child-less fallback case below. */
 .prose {
-  margin: 0;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--text);
+  white-space: pre-wrap;
+}
+
+.prose:has(> *) {
+  white-space: normal;
+}
+
+.prose p {
+  margin: 0 0 var(--space-sm);
+}
+
+.prose p:last-child {
+  margin-bottom: 0;
+}
+
+.prose ul {
+  margin: 0 0 var(--space-sm);
+  padding-left: 1.25em;
+}
+
+.prose ul:last-child {
+  margin-bottom: 0;
+}
+
+.prose li {
+  margin-bottom: var(--space-xs);
+}
+
+.prose li:last-child {
+  margin-bottom: 0;
+}
+
+.prose code {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--surface-sunk);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
 }
 
 .entry.is-failed .prose {
