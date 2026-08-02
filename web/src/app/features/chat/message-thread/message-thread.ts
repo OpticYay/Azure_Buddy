@@ -1,4 +1,4 @@
-import { Component, ElementRef, ViewChild, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, ElementRef, Injector, ViewChild, afterNextRender, computed, effect, inject, input, signal } from '@angular/core';
 
 import { ChatService } from '../../../core/services/chat.service';
 import { AdoSettingsService } from '../../../core/services/ado-settings.service';
@@ -38,6 +38,7 @@ const STARTERS = [
 export class MessageThread {
   private readonly chatService = inject(ChatService);
   private readonly adoSettingsService = inject(AdoSettingsService);
+  private readonly injector = inject(Injector);
 
   readonly sessionId = input.required<string>();
 
@@ -67,7 +68,7 @@ export class MessageThread {
    * back to plain, unlinked "#123" text in that case rather than a broken link). */
   readonly adoWorkItemBaseUrl = signal<string | null>(null);
 
-  @ViewChild('scrollAnchor') private scrollAnchor?: ElementRef<HTMLDivElement>;
+  @ViewChild('logContainer') private logContainer?: ElementRef<HTMLDivElement>;
 
   /** A reference to the child composer component instance (not its DOM element) - that's what lets
    * the empty state's starter chips drop text into the composer's own field. */
@@ -151,10 +152,26 @@ export class MessageThread {
   }
 
   private scrollToBottom(): void {
-    // Wait a tick for Angular to actually render the new messages into the DOM before trying to
-    // scroll to an element that (from the browser's perspective) doesn't exist yet.
-    queueMicrotask(() => {
-      this.scrollAnchor?.nativeElement.scrollIntoView({ behavior: 'smooth' });
-    });
+    // afterNextRender (not queueMicrotask, which this used to be) is the one API that's actually
+    // guaranteed to run AFTER Angular has painted the change to the DOM. queueMicrotask just races
+    // Angular's own zoneless rendering scheduler - which also runs via a microtask - with no
+    // guarantee ours goes second. Losing that race meant we'd measure/scroll against the OLD layout
+    // (the container had just been torn down by `loading()` flipping true then false around the
+    // reload), so the browser's default "new content resets scrollTop to 0" behavior is what actually
+    // won, and the log was left sitting at the top instead of following the new message down.
+    //
+    // Setting scrollTop directly (not scrollAnchor.scrollIntoView({behavior:'smooth'}), which this
+    // used to be) instead of a smooth animated scroll: a long reply's text can still be reflowing
+    // for a moment after this fires, and an in-progress smooth scroll doesn't re-target itself as
+    // that happens - it was landing short of the true bottom. An instant jump has no such window.
+    afterNextRender(
+      () => {
+        const el = this.logContainer?.nativeElement;
+        if (el) {
+          el.scrollTop = el.scrollHeight;
+        }
+      },
+      { injector: this.injector },
+    );
   }
 }
