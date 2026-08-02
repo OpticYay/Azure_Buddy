@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json;
 using AzureBuddy.Core.AzureDevOps;
 using AzureBuddy.Core.Llm;
@@ -73,7 +74,12 @@ public sealed class AzureBuddyAgent : IConversationalAgent
     public async Task<string> RespondAsync(string sessionId, string userMessage, CancellationToken cancellationToken = default)
     {
         var history = _historyStore.GetOrCreate(sessionId);
-        if (history.Messages.Count == 0)
+        // Checked by role, not `Messages.Count == 0`: a deterministic flow (see IntentRouter) can
+        // record user/assistant turns into this same history before the agent is ever invoked in a
+        // session, so the count can already be nonzero the first time we get here. ChatHistory.Trim()
+        // always keeps the system message first regardless of when it was added, so adding it late
+        // here still produces a correctly-ordered history for the provider.
+        if (!history.Messages.Any(m => m.Role == ChatRole.System))
         {
             history.Add(ChatMessage.System(SystemPrompt));
         }

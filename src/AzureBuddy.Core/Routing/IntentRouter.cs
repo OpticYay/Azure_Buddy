@@ -1,6 +1,12 @@
+using AzureBuddy.Core.Agent;
 using AzureBuddy.Core.Intent;
+using AzureBuddy.Core.Llm.Models;
 using AzureBuddy.Core.Routing.Flows;
 using AzureBuddy.Data.Entities;
+// AzureBuddy.Data.Entities (for ChatMessageRole/ChatMessageType below) and Llm.Models both declare a
+// ChatMessage type - this alias is what RouteAsync uses to build entries for the agent's own
+// in-memory ChatHistory, not the persisted database entity.
+using LlmChatMessage = AzureBuddy.Core.Llm.Models.ChatMessage;
 
 namespace AzureBuddy.Core.Routing;
 
@@ -17,6 +23,7 @@ public sealed class IntentRouter
     private readonly UpdateItemFlow _updateItemFlow;
     private readonly MyItemsFlow _myItemsFlow;
     private readonly IConversationalAgent _agent;
+    private readonly ChatHistoryStore _historyStore;
 
     public IntentRouter(
         IntentExtractor intentExtractor,
@@ -24,7 +31,8 @@ public sealed class IntentRouter
         ViewBugsFlow viewBugsFlow,
         UpdateItemFlow updateItemFlow,
         MyItemsFlow myItemsFlow,
-        IConversationalAgent agent)
+        IConversationalAgent agent,
+        ChatHistoryStore historyStore)
     {
         _intentExtractor = intentExtractor;
         _createBugFlow = createBugFlow;
@@ -32,6 +40,7 @@ public sealed class IntentRouter
         _updateItemFlow = updateItemFlow;
         _myItemsFlow = myItemsFlow;
         _agent = agent;
+        _historyStore = historyStore;
     }
 
     public async Task<ChatReply> RouteAsync(string sessionId, string userMessage, CancellationToken cancellationToken = default)
@@ -49,7 +58,21 @@ public sealed class IntentRouter
 
         if (flowResult.Handled)
         {
-            return EnsureNonEmpty(flowResult.Output, flowResult.Type, flowResult.WorkItemId, flowResult.TableHeaders, flowResult.TableRows);
+            var reply = EnsureNonEmpty(flowResult.Output, flowResult.Type, flowResult.WorkItemId, flowResult.TableHeaders, flowResult.TableRows);
+
+            // A deterministic flow just answered this turn without ever going through
+            // AzureBuddyAgent - but a LATER turn ("summarize these", "what about #12352 specifically")
+            // might fall through to the agent and need to know what was just shown. Recording the turn
+            // into the same per-session ChatHistory the agent reads from (keyed by this same
+            // sessionId - see ChatController's comment on that) keeps the agent's memory a complete
+            // record of the conversation, not just the turns it happened to handle itself. The reply
+            // text already has the rendered markdown table baked in (see MyItemsFlow/ViewBugsFlow), so
+            // the agent can literally read the ids/titles/states straight out of its own history.
+            var history = _historyStore.GetOrCreate(sessionId);
+            history.Add(LlmChatMessage.User(userMessage));
+            history.Add(LlmChatMessage.Assistant(reply.Text));
+
+            return reply;
         }
 
         // The free-form conversational agent (AzureBuddyAgent) generates its replies as its own prose -
