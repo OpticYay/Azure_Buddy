@@ -1,7 +1,7 @@
 import { Pipe, PipeTransform, inject } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
-/** Renders the small subset of markdown the LLM actually writes - **bold**, *italic*/_italic_,
+/** Renders the small subset of markdown the LLM actually writes - **bold**, *italic* or _italic_,
  * `code`, and "* "/"- " bullet lists - as real HTML instead of literal asterisks/underscores/
  * backticks (this was previously plain text interpolation, so a reply like "call
  * `get_my_work_items`" showed the backticks verbatim, and "*logo missing*" showed the asterisks).
