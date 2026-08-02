@@ -78,10 +78,12 @@ public sealed class CreateBugFlow
 
         if (workItem.Id == 0)
         {
-            return FlowResult.Done($"I couldn't create the bug automatically - Azure DevOps did not return a valid id.");
+            return FlowResult.DoneWithError("I couldn't create the bug automatically - Azure DevOps did not return a valid id.");
         }
 
-        return FlowResult.Done($"Bug #{workItem.Id} created and linked to Parent #{parentId}.\nTitle: [Bug] - {extracted.Title}");
+        return FlowResult.DoneWithConfirmation(
+            $"Bug #{workItem.Id} created and linked to Parent #{parentId}.\nTitle: [Bug] - {extracted.Title}",
+            workItem.Id);
     }
 
     private async Task<WorkItem> CreateBugAsync(AdoConnectionContext connection, ExtractedIntent extracted, int parentId, CancellationToken cancellationToken)

@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using AzureBuddy.Core.AzureDevOps;
 using AzureBuddy.Core.Chat;
 using AzureBuddy.Core.Settings;
@@ -12,6 +14,15 @@ namespace AzureBuddy.Tests.Integration;
 /// screenshot-to-ADO-attachment flow including its failure path.</summary>
 public class ChatsEndpointsTests : IntegrationTestBase
 {
+    // The API now serializes enums (ChatMessageRole, ChatMessageType) as their string name rather than
+    // the underlying int (see Program.cs's AddJsonOptions) - System.Net.Http.Json's parameterless
+    // ReadFromJsonAsync/GetFromJsonAsync overloads don't know about that converter by default, so any
+    // response containing a ChatMessageView needs to be read with these options explicitly instead.
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter() },
+    };
+
     public ChatsEndpointsTests(CustomWebApplicationFactory factory) : base(factory)
     {
     }
@@ -43,7 +54,7 @@ public class ChatsEndpointsTests : IntegrationTestBase
         using var client = await CreateAuthenticatedClientAsync();
 
         var response = await client.PostAsJsonAsync("/api/chats", new CreateSessionRequest(null));
-        var session = await response.Content.ReadFromJsonAsync<ChatSessionDetail>();
+        var session = await response.Content.ReadFromJsonAsync<ChatSessionDetail>(JsonOptions);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.Equal("New conversation", session!.Title);
@@ -74,7 +85,7 @@ public class ChatsEndpointsTests : IntegrationTestBase
         var appendResponse = await client.PostAsync($"/api/chats/{session.Id}/messages", form);
         Assert.Equal(HttpStatusCode.OK, appendResponse.StatusCode);
 
-        var detail = await client.GetFromJsonAsync<ChatSessionDetail>($"/api/chats/{session.Id}");
+        var detail = await client.GetFromJsonAsync<ChatSessionDetail>($"/api/chats/{session.Id}", JsonOptions);
         var message = Assert.Single(detail!.Messages);
         Assert.Equal(ChatMessageRole.User, message.Role);
         Assert.Equal("Can you find the SOA report task?", message.Content);
@@ -89,7 +100,7 @@ public class ChatsEndpointsTests : IntegrationTestBase
         using var form = BuildMessageForm("User", "Create a bug for the login page");
         await client.PostAsync($"/api/chats/{session.Id}/messages", form);
 
-        var updated = await client.GetFromJsonAsync<ChatSessionDetail>($"/api/chats/{session.Id}");
+        var updated = await client.GetFromJsonAsync<ChatSessionDetail>($"/api/chats/{session.Id}", JsonOptions);
         Assert.Equal("Create a bug for the login page", updated!.Title);
     }
 
@@ -208,7 +219,7 @@ public class ChatsEndpointsTests : IntegrationTestBase
         var response = await client.PostAsync($"/api/chats/{session.Id}/messages", form);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var result = await response.Content.ReadFromJsonAsync<AppendMessageResult>();
+        var result = await response.Content.ReadFromJsonAsync<AppendMessageResult>(JsonOptions);
 
         Assert.True(result!.Success);
         Assert.NotNull(result.Message.AdoAttachmentUrl);
@@ -231,14 +242,14 @@ public class ChatsEndpointsTests : IntegrationTestBase
         // The HTTP request itself succeeds (a message got recorded) - the failure is represented in
         // the response body, not as an HTTP error status.
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var result = await response.Content.ReadFromJsonAsync<AppendMessageResult>();
+        var result = await response.Content.ReadFromJsonAsync<AppendMessageResult>(JsonOptions);
 
         Assert.False(result!.Success);
         Assert.Null(result.Message.AdoAttachmentUrl);
         Assert.Contains("couldn't attach", result.Message.Content, StringComparison.OrdinalIgnoreCase);
 
         // And the failure message really was persisted - not just returned and forgotten.
-        var detail = await client.GetFromJsonAsync<ChatSessionDetail>($"/api/chats/{session.Id}");
+        var detail = await client.GetFromJsonAsync<ChatSessionDetail>($"/api/chats/{session.Id}", JsonOptions);
         var persisted = Assert.Single(detail!.Messages);
         Assert.Null(persisted.AdoAttachmentUrl);
     }
@@ -246,6 +257,6 @@ public class ChatsEndpointsTests : IntegrationTestBase
     private static async Task<ChatSessionDetail> CreateSessionAsync(HttpClient client, string? title = null)
     {
         var response = await client.PostAsJsonAsync("/api/chats", new CreateSessionRequest(title));
-        return (await response.Content.ReadFromJsonAsync<ChatSessionDetail>())!;
+        return (await response.Content.ReadFromJsonAsync<ChatSessionDetail>(JsonOptions))!;
     }
 }

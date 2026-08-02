@@ -1,7 +1,7 @@
-using System.ComponentModel.DataAnnotations;
 using AzureBuddy.Core.Auth;
 using AzureBuddy.Core.AzureDevOps;
 using AzureBuddy.Core.Chat;
+using AzureBuddy.Core.Common;
 using AzureBuddy.Core.Settings;
 using AzureBuddy.Data.Entities;
 using Microsoft.AspNetCore.Authorization;
@@ -78,13 +78,18 @@ public sealed class ChatsController : ControllerBase
     /// optional file part. If "screenshot" is present, workItemId is required (the attachment has to
     /// go somewhere in ADO) and the image bytes never touch this app's disk - see
     /// ChatSessionService.AppendMessageWithScreenshotAsync for where they're forwarded and discarded.
+    ///
+    /// "content" is intentionally NOT [Required] here (it used to be, and rejected a screenshot sent
+    /// with no typed caption - a completely normal case - with a 400). It's only required when there's
+    /// no screenshot, since a text message with no text doesn't mean anything; a screenshot with no
+    /// caption defaults to a placeholder below instead of forcing the caller to invent filler text.
     /// </summary>
     [HttpPost("{sessionId:guid}/messages")]
     [RequestSizeLimit(MaxScreenshotBytes)]
     public async Task<IActionResult> AppendMessageAsync(
         Guid sessionId,
         [FromForm] ChatMessageRole role,
-        [FromForm, Required] string content,
+        [FromForm] string? content,
         [FromForm] int? workItemId,
         IFormFile? screenshot,
         CancellationToken cancellationToken)
@@ -93,18 +98,29 @@ public sealed class ChatsController : ControllerBase
 
         if (screenshot is null)
         {
-            var message = await _chatSessionService.AppendMessageAsync(userId, sessionId, role, content, workItemId, cancellationToken);
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                return BadRequest(new ApiErrorResponse(new ApiError("validation_error", "The content field is required.", "content")));
+            }
+
+            var message = await _chatSessionService.AppendMessageAsync(userId, sessionId, role, content, workItemId, cancellationToken: cancellationToken);
             return message is null ? NotFound() : Ok(message);
         }
 
         if (workItemId is null)
         {
-            return BadRequest("workItemId is required when attaching a screenshot - the attachment must be linked to a specific ADO work item.");
+            return BadRequest(new ApiErrorResponse(new ApiError(
+                "work_item_id_required",
+                "workItemId is required when attaching a screenshot - the attachment must be linked to a specific ADO work item.",
+                "workItemId")));
         }
 
         if (screenshot.Length == 0 || screenshot.Length > MaxScreenshotBytes)
         {
-            return BadRequest($"Screenshot must be between 1 byte and {MaxScreenshotBytes / (1024 * 1024)} MB.");
+            return BadRequest(new ApiErrorResponse(new ApiError(
+                "invalid_screenshot_size",
+                $"Screenshot must be between 1 byte and {MaxScreenshotBytes / (1024 * 1024)} MB.",
+                "screenshot")));
         }
 
         // Populate the per-request ADO connection before the service needs it - mirrors what
@@ -118,15 +134,19 @@ public sealed class ChatsController : ControllerBase
         await screenshot.CopyToAsync(memoryStream, cancellationToken);
         var screenshotBytes = memoryStream.ToArray();
 
+        // A screenshot with nothing typed alongside it is a normal case (evidence often speaks for
+        // itself) - default to a placeholder instead of pushing that concern onto every caller.
+        var effectiveContent = string.IsNullOrWhiteSpace(content) ? "Screenshot attached." : content;
+
         AppendMessageResult? result;
         try
         {
             result = await _chatSessionService.AppendMessageWithScreenshotAsync(
-                userId, sessionId, content, workItemId.Value, screenshot.FileName, screenshotBytes, cancellationToken);
+                userId, sessionId, effectiveContent, workItemId.Value, screenshot.FileName, screenshotBytes, cancellationToken);
         }
         catch (AdoNotConfiguredException ex)
         {
-            return BadRequest(ex.Message);
+            return BadRequest(new ApiErrorResponse(new ApiError("ado_not_configured", ex.Message)));
         }
 
         if (result is null)

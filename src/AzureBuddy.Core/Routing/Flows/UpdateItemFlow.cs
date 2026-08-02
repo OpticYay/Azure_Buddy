@@ -46,12 +46,12 @@ public sealed class UpdateItemFlow
             var parts = new List<string> { $"Work item #{updated.Id} updated." };
             if (hasState) parts.Add($"New state: {extracted.State}.");
             if (hasComment) parts.Add("Comment added.");
-            return FlowResult.Done(string.Join(" ", parts));
+            return FlowResult.DoneWithConfirmation(string.Join(" ", parts), updated.Id);
         }
         catch (AdoApiException ex)
         {
             _logger.LogWarning(ex, "Failed to update work item {Id}", id);
-            return FlowResult.Done($"I couldn't update work item #{extracted.WorkItemId} - Azure DevOps returned: {ex.Message}");
+            return FlowResult.DoneWithError($"I couldn't update work item #{extracted.WorkItemId} - Azure DevOps returned: {ex.Message}");
         }
     }
 }

@@ -1,4 +1,5 @@
 using AzureBuddy.Core.Auth;
+using AzureBuddy.Core.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -27,21 +28,21 @@ public sealed class AuthController : ControllerBase
     public async Task<IActionResult> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken)
     {
         var result = await _authService.RegisterAsync(request, cancellationToken);
-        return result.Success ? Ok(result.Tokens) : BadRequest(new { errors = result.Errors });
+        return result.Success ? Ok(result.Tokens) : BadRequest(new ApiErrorResponse(result.Errors));
     }
 
     [HttpPost("login")]
     public async Task<IActionResult> LoginAsync(LoginRequest request, CancellationToken cancellationToken)
     {
         var result = await _authService.LoginAsync(request, cancellationToken);
-        return result.Success ? Ok(result.Tokens) : Unauthorized(new { errors = result.Errors });
+        return result.Success ? Ok(result.Tokens) : Unauthorized(new ApiErrorResponse(result.Errors));
     }
 
     [HttpPost("refresh")]
     public async Task<IActionResult> RefreshAsync(RefreshRequest request, CancellationToken cancellationToken)
     {
         var result = await _authService.RefreshAsync(request.RefreshToken, cancellationToken);
-        return result.Success ? Ok(result.Tokens) : Unauthorized(new { errors = result.Errors });
+        return result.Success ? Ok(result.Tokens) : Unauthorized(new ApiErrorResponse(result.Errors));
     }
 
     [HttpPost("logout")]

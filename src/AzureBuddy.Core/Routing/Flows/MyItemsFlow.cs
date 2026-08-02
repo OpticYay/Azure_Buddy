@@ -37,10 +37,10 @@ public sealed class MyItemsFlow
             new[] { AdoFields.Title, AdoFields.WorkItemType, AdoFields.State },
             cancellationToken);
 
-        var table = MarkdownTableBuilder.Build(
-            new[] { "ID", "Title", "Type", "State" },
-            items.Select(i => (IReadOnlyList<string>)new[] { i.Id.ToString(), i.Title ?? "", i.WorkItemType ?? "", i.State ?? "" }));
+        var headers = new[] { "ID", "Title", "Type", "State" };
+        var rows = items.Select(i => (IReadOnlyList<string>)new[] { i.Id.ToString(), i.Title ?? "", i.WorkItemType ?? "", i.State ?? "" }).ToList();
+        var table = MarkdownTableBuilder.Build(headers, rows);
 
-        return FlowResult.Done($"Your assigned work items:\n\n{table}");
+        return FlowResult.DoneWithTable($"Your assigned work items:\n\n{table}", headers, rows);
     }
 }

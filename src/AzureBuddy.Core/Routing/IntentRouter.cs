@@ -1,5 +1,6 @@
 using AzureBuddy.Core.Intent;
 using AzureBuddy.Core.Routing.Flows;
+using AzureBuddy.Data.Entities;
 
 namespace AzureBuddy.Core.Routing;
 
@@ -33,7 +34,7 @@ public sealed class IntentRouter
         _agent = agent;
     }
 
-    public async Task<string> RouteAsync(string sessionId, string userMessage, CancellationToken cancellationToken = default)
+    public async Task<ChatReply> RouteAsync(string sessionId, string userMessage, CancellationToken cancellationToken = default)
     {
         var extracted = await _intentExtractor.ExtractAsync(userMessage, cancellationToken);
 
@@ -48,17 +49,31 @@ public sealed class IntentRouter
 
         if (flowResult.Handled)
         {
-            return EnsureNonEmpty(flowResult.Output);
+            return EnsureNonEmpty(flowResult.Output, flowResult.Type, flowResult.WorkItemId, flowResult.TableHeaders, flowResult.TableRows);
         }
 
+        // The free-form conversational agent (AzureBuddyAgent) generates its replies as its own prose -
+        // it doesn't know about ChatMessageType at all, so every agent reply is tagged Text. This is a
+        // known, real limitation: an agent reply that happens to look like a list or confirmation won't
+        // render any richer than plain text client-side. Fixing that would mean either prompting the
+        // agent to emit structured output, or having it call the same deterministic-flow builders
+        // instead of writing its own prose - both bigger changes than this pass covers.
         var agentReply = await _agent.RespondAsync(sessionId, userMessage, cancellationToken);
-        return EnsureNonEmpty(agentReply);
+        return EnsureNonEmpty(agentReply, ChatMessageType.Text);
     }
 
     /// <summary>Mirrors the n8n "Ensure Non-Empty Reply" Code node - never let a blank/failed model
-    /// response reach the user silently.</summary>
-    private static string EnsureNonEmpty(string? text) =>
+    /// response reach the user silently. A blank/failed reply is itself an Error-typed message,
+    /// regardless of what type the caller asked for - there's no "empty table" to show.</summary>
+    private static ChatReply EnsureNonEmpty(
+        string? text,
+        ChatMessageType type,
+        int? workItemId = null,
+        IReadOnlyList<string>? tableHeaders = null,
+        IReadOnlyList<IReadOnlyList<string>>? tableRows = null) =>
         string.IsNullOrWhiteSpace(text)
-            ? "Sorry, I'm having trouble processing that right now (both the primary and fallback models failed to respond). Please try again in a moment."
-            : text.Trim();
+            ? new ChatReply(
+                "Sorry, I'm having trouble processing that right now (both the primary and fallback models failed to respond). Please try again in a moment.",
+                ChatMessageType.Error)
+            : new ChatReply(text.Trim(), type, workItemId, tableHeaders, tableRows);
 }

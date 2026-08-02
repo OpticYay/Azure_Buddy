@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AzureBuddy.Core.AzureDevOps;
 using AzureBuddy.Data;
 using AzureBuddy.Data.Entities;
@@ -97,9 +98,19 @@ public sealed class ChatSessionService
     }
 
     /// <summary>Appends a plain text message (no screenshot) - e.g. the assistant's reply, or a user
-    /// message with no attachment.</summary>
+    /// message with no attachment. `type`/`tableHeaders`/`tableRows` let a caller that already knows
+    /// the shape of what it's saving (see ChatController, which now gets this from IntentRouter's
+    /// ChatReply) tag the message correctly instead of it always defaulting to plain Text.</summary>
     public async Task<ChatMessageView?> AppendMessageAsync(
-        string userId, Guid sessionId, ChatMessageRole role, string content, int? workItemId, CancellationToken cancellationToken = default)
+        string userId,
+        Guid sessionId,
+        ChatMessageRole role,
+        string content,
+        int? workItemId,
+        ChatMessageType type = ChatMessageType.Text,
+        IReadOnlyList<string>? tableHeaders = null,
+        IReadOnlyList<IReadOnlyList<string>>? tableRows = null,
+        CancellationToken cancellationToken = default)
     {
         var session = await _dbContext.ChatSessions
             .SingleOrDefaultAsync(s => s.Id == sessionId && s.UserId == userId, cancellationToken);
@@ -114,7 +125,9 @@ public sealed class ChatSessionService
             SessionId = session.Id,
             Role = role,
             Content = content,
-            WorkItemId = workItemId
+            WorkItemId = workItemId,
+            Type = type,
+            TableDataJson = tableHeaders is null ? null : JsonSerializer.Serialize(new ChatMessageTableData(tableHeaders, tableRows ?? Array.Empty<IReadOnlyList<string>>())),
         };
 
         await SaveNewMessageAsync(session, message, cancellationToken);
@@ -180,7 +193,8 @@ public sealed class ChatSessionService
                 Role = ChatMessageRole.Assistant,
                 Content = $"I couldn't attach that screenshot to work item #{workItemId} - Azure DevOps returned: {ex.Message}",
                 AdoAttachmentUrl = null,
-                WorkItemId = workItemId
+                WorkItemId = workItemId,
+                Type = ChatMessageType.Error,
             };
 
             await SaveNewMessageAsync(session, failureMessage, cancellationToken);
@@ -210,5 +224,13 @@ public sealed class ChatSessionService
         new(session.Id, session.Title, session.CreatedAt, session.UpdatedAt, session.Messages.Select(ToView).ToList());
 
     private static ChatMessageView ToView(ChatMessage message) =>
-        new(message.Id, message.Role, message.Content, message.AdoAttachmentUrl, message.WorkItemId, message.CreatedAt);
+        new(
+            message.Id,
+            message.Role,
+            message.Content,
+            message.AdoAttachmentUrl,
+            message.WorkItemId,
+            message.Type,
+            message.TableDataJson is null ? null : JsonSerializer.Deserialize<ChatMessageTableData>(message.TableDataJson),
+            message.CreatedAt);
 }

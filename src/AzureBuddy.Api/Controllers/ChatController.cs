@@ -13,7 +13,16 @@ namespace AzureBuddy.Api.Controllers;
 // [Required] targets the parameter, not "[property: ...]" - see AuthModels.cs's RegisterRequest
 // comment for why that placement matters on a record's primary constructor.
 public sealed record ChatRequest(Guid? SessionId, [Required] string Message);
-public sealed record ChatResponse(Guid SessionId, string Reply);
+
+/// <summary>Now carries the same Type/WorkItemId/Table tagging as a persisted ChatMessageView (see
+/// IntentRouter's ChatReply) instead of just a bare Reply string - a table/confirmation reply can be
+/// rendered richly immediately, without needing a follow-up GET /api/chats/{id} just to learn its shape.</summary>
+public sealed record ChatResponse(
+    Guid SessionId,
+    string Reply,
+    ChatMessageType Type,
+    int? WorkItemId,
+    ChatMessageTableData? Table);
 
 /// <summary>
 /// The live chat turn: one message in, one reply out. Now requires authentication (previously this
@@ -72,22 +81,26 @@ public sealed class ChatController : ControllerBase
 
         session ??= await _chatSessionService.CreateSessionAsync(userId, title: null, cancellationToken);
 
-        await _chatSessionService.AppendMessageAsync(userId, session.Id, ChatMessageRole.User, request.Message, workItemId: null, cancellationToken);
+        await _chatSessionService.AppendMessageAsync(
+            userId, session.Id, ChatMessageRole.User, request.Message, workItemId: null, cancellationToken: cancellationToken);
 
-        string reply;
+        ChatReply routed;
         try
         {
             // IntentRouter's own in-memory buffer (for LLM context) is keyed by this same session id,
             // so short-term conversational memory and durable history line up 1:1.
-            reply = await _intentRouter.RouteAsync(session.Id.ToString(), request.Message, cancellationToken);
+            routed = await _intentRouter.RouteAsync(session.Id.ToString(), request.Message, cancellationToken);
         }
         catch (AdoNotConfiguredException ex)
         {
-            reply = ex.Message;
+            routed = new ChatReply(ex.Message, ChatMessageType.Error);
         }
 
-        await _chatSessionService.AppendMessageAsync(userId, session.Id, ChatMessageRole.Assistant, reply, workItemId: null, cancellationToken);
+        await _chatSessionService.AppendMessageAsync(
+            userId, session.Id, ChatMessageRole.Assistant, routed.Text, routed.WorkItemId,
+            routed.Type, routed.TableHeaders, routed.TableRows, cancellationToken);
 
-        return Ok(new ChatResponse(session.Id, reply));
+        var table = routed.TableHeaders is null ? null : new ChatMessageTableData(routed.TableHeaders, routed.TableRows ?? Array.Empty<IReadOnlyList<string>>());
+        return Ok(new ChatResponse(session.Id, routed.Text, routed.Type, routed.WorkItemId, table));
     }
 }
