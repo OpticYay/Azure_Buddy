@@ -1,0 +1,58 @@
+<div class="thread">
+  <!--
+    `[@crossFade]="sessionId()"` fades this container whenever the bound VALUE changes (see the
+    '* => *' transition in shared/animations.ts). That's what makes switching between two
+    already-loaded conversations read as a cross-fade, even though this element itself never leaves
+    the DOM - the component instance is reused across session switches.
+  -->
+  <div class="log" [@crossFade]="sessionId()">
+    @if (loading()) {
+      <p class="state">Loading conversation…</p>
+    } @else if (loadError()) {
+      <p class="state state--fail">{{ loadError() }}</p>
+    } @else if (displayMessages().length === 0) {
+      <!-- [@openerStagger] cascades the heading, hint and chips in one short sequence (see
+           shared/animations.ts) so an empty conversation assembles itself instead of dropping into
+           the middle of a large blank area all at once. -->
+      <div class="opener" [@openerStagger]>
+        <p class="opener__lead">Start the log</p>
+        <p class="opener__hint">
+          Ask for your work items, file a defect, or paste a screenshot to attach as evidence.
+        </p>
+        <div class="starters">
+          @for (starter of starters; track starter) {
+            <button type="button" class="starter" (click)="useStarter(starter)">
+              {{ starter }}
+            </button>
+          }
+        </div>
+      </div>
+    } @else {
+      @for (displayMessage of displayMessages(); track displayMessage.message.id) {
+        <!-- [@fadeSlideIn] runs the first time each entry is added. Because `track` identifies
+             entries by id, later re-renders don't replay it on messages already on screen. -->
+        <app-message-item
+          [@fadeSlideIn]
+          [displayMessage]="displayMessage"
+          [adoWorkItemBaseUrl]="adoWorkItemBaseUrl()"
+        />
+      }
+    }
+
+    @if (isAwaitingReply()) {
+      <div [@fadeSlideIn]>
+        <app-typing-indicator />
+      </div>
+    }
+
+    <!-- Zero-height marker; scrollToBottom() scrolls this into view, which is simpler than
+         computing container scroll offsets. -->
+    <div #scrollAnchor></div>
+  </div>
+
+  <app-message-composer
+    [sessionId]="sessionId()"
+    (messageSent)="onMessageSent()"
+    (awaitingReply)="onAwaitingReplyChange($event)"
+  />
+</div>

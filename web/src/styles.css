@@ -1,0 +1,270 @@
+/* Global styles - applied once, app-wide. A component's own .css file is scoped to just that
+ * component by Angular's view encapsulation, so anything that must apply everywhere (base type,
+ * focus rings, shared primitives like .stamp) has to live here. */
+@import './styles/tokens.css';
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: var(--font-body);
+  font-size: var(--t-body);
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Display type ────────────────────────────────────────────────────────────────────────────
+   Archivo set WIDE (the `wdth` variable axis at 118%) with tight tracking. This is the single
+   loudest typographic decision in the app: wide industrial grotesque headings are what make it
+   read as instrument panel rather than generic dashboard. */
+h1,
+h2,
+h3,
+.display {
+  font-family: var(--font-display);
+  font-variation-settings: 'wdth' 118;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.1;
+  margin: 0;
+}
+
+/* ── The instrument label ────────────────────────────────────────────────────────────────────
+   Mono, uppercase, widely tracked, small. Used for every role tag, state tag, field label and
+   timestamp in the app. Consistency here is what ties the screens together. */
+.micro {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 500;
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── The work item stamp - the signature element ─────────────────────────────────────────────
+   Every Azure DevOps work item ID in this app renders as this: brass, monospace, on a faint wash
+   with a hairline. IDs are the currency of the product - every flow ends in one - so they get a
+   single recurring treatment that makes them scannable anywhere they appear (a confirmation, a
+   results table cell, an evidence caption). Defined globally because three different components
+   render one, and they must not drift apart. */
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 1px var(--space-xs);
+  border: 1px solid var(--brass-rule);
+  border-radius: var(--r-sm);
+  background: var(--brass-wash);
+  color: var(--brass-deep);
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+
+a.stamp:hover {
+  background: #f0e4c9;
+  border-color: var(--brass);
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background-color var(--t-fast), border-color var(--t-fast), color var(--t-fast),
+    transform var(--t-fast), opacity var(--t-fast);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+input,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast), background-color var(--t-fast);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--ink-300);
+}
+
+/* One focus treatment for the whole app. :focus-visible (not :focus) means it appears for keyboard
+   users but not on mouse click, which is the behaviour you want - a visible ring is essential for
+   keyboard navigation and noise for everyone else. */
+:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* ── Auth screens ────────────────────────────────────────────────────────────────────────────
+   Sign-in and register are the same layout with one extra field, so their styles live here once
+   rather than being duplicated across two component stylesheets that would drift apart. Everything
+   is namespaced under `.auth`, which keeps generic names like `.card` and `.field` from colliding
+   with anything else in the app despite being in the global sheet. */
+.auth {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--space-lg);
+  background: var(--ink-900);
+  /* Two sets of hairlines at 32px = a faint engineering grid. It's the one piece of texture in the
+     app, and it earns its place by saying "measurement" before a single word is read. */
+  background-image:
+    repeating-linear-gradient(to right, rgba(169, 124, 47, 0.07) 0 1px, transparent 1px 32px),
+    repeating-linear-gradient(to bottom, rgba(169, 124, 47, 0.07) 0 1px, transparent 1px 32px);
+}
+
+.auth .card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  width: 100%;
+  max-width: 380px;
+  padding: var(--space-xl);
+  background: var(--surface);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-float);
+  /* Brass cap rule - the same accent that marks your entries and every work item ID. */
+  border-top: 2px solid var(--brass);
+}
+
+.auth .card__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-xs);
+}
+
+.auth .mark {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--brass);
+  border-radius: var(--r-sm);
+  color: var(--brass-deep);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.auth h1 {
+  font-size: var(--t-title);
+  margin-bottom: 2px;
+}
+
+.auth .tagline {
+  margin: 0;
+  font-size: var(--t-sm);
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.auth .field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.auth .field input {
+  padding: 9px var(--space-sm);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+}
+
+.auth .field input:focus-visible {
+  outline: none;
+  border-color: var(--brass);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--brass-wash);
+}
+
+.auth .field__error {
+  font-size: var(--t-sm);
+  color: var(--fail);
+}
+
+.auth .alert {
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--fail-wash);
+  border: 1px solid var(--fail-rule);
+  border-radius: var(--r-sm);
+  color: var(--fail);
+  font-size: var(--t-sm);
+}
+
+.auth .submit {
+  margin-top: var(--space-xs);
+  padding: 10px;
+  border: 1px solid var(--ink-900);
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  color: var(--surface);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 500;
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+}
+
+.auth .submit:hover:not(:disabled) {
+  background: var(--ink-700);
+  border-color: var(--ink-700);
+}
+
+.auth .submit:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.auth .switch {
+  margin: 0;
+  text-align: center;
+  font-size: var(--t-sm);
+  color: var(--text-muted);
+}
+
+.auth .switch a {
+  color: var(--brass-deep);
+  font-weight: 500;
+  text-decoration: none;
+  border-bottom: 1px solid var(--brass-rule);
+}
+
+.auth .switch a:hover {
+  border-bottom-color: var(--brass);
+}
+
+/* Respect the OS-level "reduce motion" setting. Some people get motion sickness from UI animation;
+   this is a baseline accessibility requirement, not a nicety. Everything still works - transitions
+   just resolve instantly. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

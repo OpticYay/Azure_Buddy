@@ -1,0 +1,114 @@
+<div class="page">
+  <header class="page__head">
+    <h1>Connection</h1>
+    <p class="page__sub">The Azure DevOps project Buddy files defects into.</p>
+  </header>
+
+  @if (loading()) {
+    <p class="state">Loading…</p>
+  } @else if (loadError()) {
+    <!-- @else if chains onto the same @if block, exactly like a TypeScript if / else if / else. -->
+    <p class="alert">{{ loadError() }}</p>
+  } @else {
+    <div class="card">
+      @if (!isEditing()) {
+        <!-- ── Saved state: read-only, with the token masked ─────────────────────────────── -->
+        <dl class="readout">
+          <dt class="micro">Organization</dt>
+          <dd>{{ settings()?.organizationUrl }}</dd>
+
+          <dt class="micro">Project</dt>
+          <dd>{{ settings()?.defaultProject }}</dd>
+
+          <dt class="micro">Access token</dt>
+          <!-- This is exactly what the API returns: isConfigured true, plus a masked value like
+               "••••••••1234". The real token is never sent to the browser at all, so there is
+               nothing here to leak even if this page had a bug. -->
+          <dd class="readout__masked">{{ settings()?.maskedPat }}</dd>
+        </dl>
+
+        <div class="actions">
+          <button type="button" class="btn" (click)="startEditing()">Update connection</button>
+
+          <!--
+            The button's contents morph across three states rather than only swapping its label: a
+            spinning ring while in flight, then a check or a cross once the result lands, each with
+            [@popIn] so the icon scales in instead of snapping.
+          -->
+          <button type="button" class="btn btn--check" (click)="testConnection()" [disabled]="testing()">
+            @if (testing()) {
+              <span class="spinner" [@popIn] aria-hidden="true"></span>
+              Checking
+            } @else if (testResult()?.success === true) {
+              <span class="verdict verdict--pass" [@popIn] aria-hidden="true">✓</span>
+              Test connection
+            } @else if (testResult()?.success === false) {
+              <span class="verdict verdict--fail" [@popIn] aria-hidden="true">✕</span>
+              Test connection
+            } @else {
+              Test connection
+            }
+          </button>
+
+          <button type="button" class="btn btn--danger" (click)="confirmDelete()" [disabled]="deleting()">
+            {{ deleting() ? 'Removing' : 'Remove' }}
+          </button>
+        </div>
+
+        @if (testResult(); as result) {
+          @if (result.success) {
+            <p class="verdict-note verdict-note--pass" [@popIn]>
+              Reached the project. Buddy can read and write work items.
+            </p>
+          } @else {
+            <p class="verdict-note verdict-note--fail" [@popIn]>{{ result.error }}</p>
+          }
+        }
+      } @else {
+        <!-- ── Edit state: token field always starts blank, never pre-filled with the mask ── -->
+        <form [formGroup]="form" (ngSubmit)="save()">
+          <label class="field">
+            <span class="micro">Organization URL</span>
+            <input type="url" formControlName="organizationUrl" placeholder="https://dev.azure.com/your-org" />
+            @if (form.controls.organizationUrl.touched && form.controls.organizationUrl.invalid) {
+              <span class="field__error">Enter a URL starting with http:// or https://</span>
+            }
+          </label>
+
+          <label class="field">
+            <span class="micro">Project</span>
+            <input type="text" formControlName="defaultProject" placeholder="Your project name" />
+            @if (form.controls.defaultProject.touched && form.controls.defaultProject.invalid) {
+              <span class="field__error">Enter a project name.</span>
+            }
+          </label>
+
+          <label class="field">
+            <span class="micro">Personal access token</span>
+            <input type="password" formControlName="personalAccessToken" placeholder="Paste a token" autocomplete="off" />
+            @if (form.controls.personalAccessToken.touched && form.controls.personalAccessToken.invalid) {
+              <span class="field__error">Paste a token.</span>
+            }
+            <!-- Not a frontend choice: the API stores the token encrypted and never decrypts it to
+                 compare or reuse, so it only accepts a complete set of settings. See save() in
+                 ado-settings.ts. -->
+            <span class="field__note">Re-enter the token on every save — it's stored encrypted and can't be read back.</span>
+          </label>
+
+          @if (saveError()) {
+            <p class="alert">{{ saveError() }}</p>
+          }
+
+          <div class="actions">
+            <button type="submit" class="btn btn--primary" [disabled]="saving()">
+              {{ saving() ? 'Saving' : 'Save connection' }}
+            </button>
+            @if (settings()?.isConfigured) {
+              <button type="button" class="btn" (click)="cancelEditing()" [disabled]="saving()">Cancel</button>
+            }
+          </div>
+        </form>
+      }
+    </div>
+  }
+</div>

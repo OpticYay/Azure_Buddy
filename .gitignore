@@ -13,3 +13,19 @@ Thumbs.db
 # Editors
 .vscode/
 .idea/
+
+# .NET
+bin/
+obj/
+*.user
+.vs/
+# Real appsettings files may hold live secrets (DB password, JWT signing key, Gemini API key) - only
+# the placeholder appsettings.Example.json is ever tracked. Ignoring the bare name (not just
+# *.local.json/*.Development.json) means a real file can never be committed by accident even via
+# `git add -A`, regardless of what environment suffix it uses.
+appsettings.json
+appsettings.*.json
+!appsettings.Example.json
+# Data Protection keys encrypt PATs at rest - never commit them (losing/leaking them is either a
+# security incident or makes every stored PAT permanently unreadable).
+DataProtection-Keys/

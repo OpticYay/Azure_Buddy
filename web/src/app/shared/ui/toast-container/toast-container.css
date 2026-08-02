@@ -1,0 +1,38 @@
+.toast-stack {
+  position: fixed;
+  top: calc(52px + var(--space-md));
+  right: var(--space-md);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  max-width: 320px;
+}
+
+/* Petrol plate with a state-coloured left edge - the same "rule marks the state" device used on log
+   entries and the sidebar's active conversation. */
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--r-sm);
+  border-left: 2px solid var(--brass);
+  background: var(--ink-900);
+  color: var(--paper);
+  box-shadow: var(--shadow-float);
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+
+.toast.success {
+  border-left-color: #4bbd85;
+}
+
+.toast.error {
+  border-left-color: #e4776b;
+}
+
+.toast.info {
+  border-left-color: var(--brass);
+}

@@ -1,0 +1,13 @@
+<!--
+  `[@toastSlide]` attaches the trigger imported in toast-container.ts to each toast <div>. Because this
+  is inside an `@for`, Angular applies the :enter/:leave transitions individually to each toast as it's
+  added/removed from the `toasts()` array - a toast that's dismissed early doesn't affect the others
+  still on screen.
+-->
+<div class="toast-stack">
+  @for (toast of toastService.toasts(); track toast.id) {
+    <div class="toast" [class]="toast.kind" [@toastSlide] (click)="toastService.dismiss(toast.id)">
+      {{ toast.message }}
+    </div>
+  }
+</div>

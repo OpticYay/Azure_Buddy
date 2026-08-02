@@ -1,0 +1,170 @@
+<div class="page">
+  <header class="page__head">
+    <h1>Model</h1>
+    <p class="page__sub">Which LLM provider Buddy uses to answer, and its fallback if the primary fails.</p>
+  </header>
+
+  @if (loading()) {
+    <p class="state">Loading…</p>
+  } @else if (loadError()) {
+    <p class="alert">{{ loadError() }}</p>
+  } @else {
+    <div class="card">
+      @if (!isEditing()) {
+        <!-- ── Saved state: read-only, Gemini key masked ─────────────────────────────────────── -->
+        @if (!settings()?.isStoredInDatabase) {
+          <p class="notice" [@popIn]>
+            Running on the deployment's default configuration - nothing has been saved from this screen yet.
+          </p>
+        }
+
+        <dl class="readout">
+          <dt class="micro">Primary</dt>
+          <dd>{{ settings()?.primaryProvider }}</dd>
+
+          <dt class="micro">Fallback</dt>
+          <dd>{{ settings()?.useFallback ? 'Enabled' : 'Off' }}</dd>
+        </dl>
+
+        @if (viewGeminiVisible()) {
+          <div class="provider-block">
+            <p class="provider-block__label micro">
+              Gemini · {{ settings()?.primaryProvider === 'Gemini' ? 'Primary' : 'Secondary' }}
+            </p>
+            <dl class="readout">
+              <dt class="micro">Model</dt>
+              <dd>{{ settings()?.geminiModel }}</dd>
+              <dt class="micro">Base URL</dt>
+              <dd>{{ settings()?.geminiBaseUrl }}</dd>
+              <dt class="micro">Timeout</dt>
+              <dd>{{ settings()?.geminiTimeoutSeconds }}s</dd>
+              <dt class="micro">API key</dt>
+              <dd class="readout__masked">{{ settings()?.maskedGeminiApiKey ?? 'Not set' }}</dd>
+            </dl>
+          </div>
+        }
+
+        @if (viewOllamaVisible()) {
+          <div class="provider-block">
+            <p class="provider-block__label micro">
+              Ollama · {{ settings()?.primaryProvider === 'Ollama' ? 'Primary' : 'Secondary' }}
+            </p>
+            <dl class="readout">
+              <dt class="micro">Model</dt>
+              <dd>{{ settings()?.ollamaModel }}</dd>
+              <dt class="micro">Base URL</dt>
+              <dd>{{ settings()?.ollamaBaseUrl }}</dd>
+              <dt class="micro">Context size</dt>
+              <dd>{{ settings()?.ollamaNumCtx }}</dd>
+              <dt class="micro">Timeout</dt>
+              <dd>{{ settings()?.ollamaTimeoutSeconds }}s</dd>
+            </dl>
+          </div>
+        }
+
+        <div class="actions">
+          <button type="button" class="btn btn--primary" (click)="startEditing()">Update model settings</button>
+        </div>
+      } @else {
+        <!-- ── Edit state: everything pre-fills except the API key, which always starts blank ── -->
+        <form [formGroup]="form" (ngSubmit)="save()">
+          <div class="provider-select">
+            <label class="field">
+              <span class="micro">Primary provider</span>
+              <select formControlName="primaryProvider">
+                <option value="Gemini">Gemini</option>
+                <option value="Ollama">Ollama</option>
+              </select>
+            </label>
+
+            <label class="checkbox-field">
+              <input type="checkbox" formControlName="useFallback" />
+              <span>Try the other provider if the primary fails</span>
+            </label>
+          </div>
+
+          <fieldset class="provider-fields" [hidden]="!geminiFieldsVisible()">
+            <legend class="micro">
+              Gemini · {{ form.controls.primaryProvider.value === 'Gemini' ? 'Primary' : 'Secondary' }}
+            </legend>
+
+            <label class="field">
+              <span class="micro">Model</span>
+              <input type="text" formControlName="geminiModel" />
+              @if (form.controls.geminiModel.touched && form.controls.geminiModel.invalid) {
+                <span class="field__error">Required.</span>
+              }
+            </label>
+
+            <label class="field">
+              <span class="micro">Base URL</span>
+              <input type="url" formControlName="geminiBaseUrl" />
+              @if (form.controls.geminiBaseUrl.touched && form.controls.geminiBaseUrl.invalid) {
+                <span class="field__error">Enter a URL starting with http(s)://</span>
+              }
+            </label>
+
+            <label class="field">
+              <span class="micro">Timeout (seconds)</span>
+              <input type="number" min="1" max="600" formControlName="geminiTimeoutSeconds" />
+            </label>
+
+            <label class="field">
+              <span class="micro">API key</span>
+              <input
+                type="password"
+                formControlName="geminiApiKey"
+                autocomplete="off"
+                [placeholder]="settings()?.maskedGeminiApiKey ?? 'Paste a Gemini API key'"
+              />
+              <span class="field__note">Leave blank to keep the key currently saved.</span>
+            </label>
+          </fieldset>
+
+          <fieldset class="provider-fields" [hidden]="!ollamaFieldsVisible()">
+            <legend class="micro">
+              Ollama · {{ form.controls.primaryProvider.value === 'Ollama' ? 'Primary' : 'Secondary' }}
+            </legend>
+
+            <label class="field">
+              <span class="micro">Model</span>
+              <input type="text" formControlName="ollamaModel" />
+              @if (form.controls.ollamaModel.touched && form.controls.ollamaModel.invalid) {
+                <span class="field__error">Required.</span>
+              }
+            </label>
+
+            <label class="field">
+              <span class="micro">Base URL</span>
+              <input type="url" formControlName="ollamaBaseUrl" />
+              @if (form.controls.ollamaBaseUrl.touched && form.controls.ollamaBaseUrl.invalid) {
+                <span class="field__error">Enter a URL starting with http(s)://</span>
+              }
+            </label>
+
+            <label class="field">
+              <span class="micro">Context size</span>
+              <input type="number" min="256" max="131072" formControlName="ollamaNumCtx" />
+            </label>
+
+            <label class="field">
+              <span class="micro">Timeout (seconds)</span>
+              <input type="number" min="1" max="600" formControlName="ollamaTimeoutSeconds" />
+            </label>
+          </fieldset>
+
+          @if (saveError()) {
+            <p class="alert">{{ saveError() }}</p>
+          }
+
+          <div class="actions">
+            <button type="submit" class="btn btn--primary" [disabled]="saving()">
+              {{ saving() ? 'Saving…' : 'Save' }}
+            </button>
+            <button type="button" class="btn" (click)="cancelEditing()" [disabled]="saving()">Cancel</button>
+          </div>
+        </form>
+      }
+    </div>
+  }
+</div>

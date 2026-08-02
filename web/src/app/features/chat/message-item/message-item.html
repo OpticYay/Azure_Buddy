@@ -1,0 +1,118 @@
+<!--
+  One entry in the log. The header rule is the recurring structure: role · hairline · state tag ·
+  timestamp. The tag only appears when the backend actually classified the message as something
+  other than plain text, so it encodes real information rather than decorating every row.
+-->
+<article
+  class="entry"
+  [class.is-you]="isUser()"
+  [class.is-failed]="displayMessage().type === 'error'"
+  [class.is-recorded]="displayMessage().type === 'confirmation'"
+>
+  <header class="entry__meta">
+    <span class="entry__role">{{ roleLabel() }}</span>
+    <span class="entry__hr" aria-hidden="true"></span>
+    @if (tagLabel(); as tag) {
+      <span class="entry__tag">{{ tag }}</span>
+    }
+    <time class="entry__time">{{ displayMessage().message.createdAt | date: 'HH:mm' }}</time>
+  </header>
+
+  <div class="entry__body">
+    <!--
+      `@switch` is Angular's built-in control-flow block - the template equivalent of a switch
+      statement. Paired with the DisplayMessage discriminated union, TypeScript has already checked
+      that `.headers`/`.rows` only get read inside the 'table' branch, so a typo'd type string can't
+      silently render nothing the way a chain of equality checks could.
+    -->
+    @switch (displayMessage().type) {
+      @case ('text') {
+        <p class="prose">{{ displayMessage().message.content }}</p>
+      }
+
+      @case ('error') {
+        <p class="prose">{{ displayMessage().message.content }}</p>
+      }
+
+      @case ('confirmation') {
+        @let confirmation = displayMessage();
+        @if (confirmation.type === 'confirmation') {
+          <div class="record">
+            <!-- The work item ID is the headline: it's the thing that now exists in Azure DevOps
+                 and the thing you'd quote to a colleague. The header tag already says "Recorded",
+                 so there's no second line of prose restating it here. -->
+            <div class="record__head">
+              @if (workItemUrl(confirmation.workItemId); as url) {
+                <a class="stamp stamp--lg" [href]="url" target="_blank" rel="noopener">#{{ confirmation.workItemId }}</a>
+              } @else {
+                <span class="stamp stamp--lg">#{{ confirmation.workItemId }}</span>
+              }
+            </div>
+            <p class="prose">{{ confirmation.summary }}</p>
+            @if (workItemUrl(confirmation.workItemId); as url) {
+              <a class="record__link" [href]="url" target="_blank" rel="noopener">Open work item</a>
+            }
+          </div>
+        }
+      }
+
+      @case ('table') {
+        @let tableMsg = displayMessage();
+        @if (tableMsg.type === 'table') {
+          <!-- Wrapped so a wide result set scrolls inside the entry instead of stretching the
+               whole thread horizontally. -->
+          <div class="results">
+            <table>
+              <thead>
+                <tr>
+                  @for (header of tableMsg.headers; track header) {
+                    <th>{{ header }}</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of tableMsg.rows; track $index) {
+                  <tr>
+                    @for (cell of row; track $index) {
+                      <td [class.cell-id]="isIdColumn(tableMsg.headers[$index])">
+                        @if (cellWorkItemUrl(tableMsg.headers[$index], cell); as url) {
+                          <a class="stamp" [href]="url" target="_blank" rel="noopener">#{{ cell }}</a>
+                        } @else {
+                          {{ cell }}
+                        }
+                      </td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+            <p class="results__count">
+              {{ tableMsg.rows.length }} {{ tableMsg.rows.length === 1 ? 'item' : 'items' }}
+            </p>
+          </div>
+        }
+      }
+
+      @case ('screenshot') {
+        @if (displayMessage().message.content) {
+          <p class="prose">{{ displayMessage().message.content }}</p>
+        }
+        <figure class="evidence">
+          <a [href]="displayMessage().message.adoAttachmentUrl!" target="_blank" rel="noopener">
+            <img [src]="displayMessage().message.adoAttachmentUrl" alt="Screenshot attached as evidence" />
+          </a>
+          @if (displayMessage().message.workItemId; as workItemId) {
+            <figcaption>
+              <span class="micro">Attached to</span>
+              @if (workItemUrl(workItemId); as url) {
+                <a class="stamp" [href]="url" target="_blank" rel="noopener">#{{ workItemId }}</a>
+              } @else {
+                <span class="stamp">#{{ workItemId }}</span>
+              }
+            </figcaption>
+          }
+        </figure>
+      }
+    }
+  </div>
+</article>

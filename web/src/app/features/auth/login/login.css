@@ -1,0 +1,3 @@
+/* Sign-in and register share one layout, so their styles live in the global stylesheet under the
+ * `.auth` namespace (see src/styles.css) rather than being duplicated in two component sheets that
+ * would inevitably drift apart. Nothing component-specific is needed here. */
