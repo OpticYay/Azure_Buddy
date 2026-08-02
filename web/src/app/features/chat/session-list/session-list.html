@@ -41,29 +41,38 @@
     <ul class="sessions" [@listStagger]>
       @for (session of sessions(); track session.id) {
         <li>
-          <a
-            class="session"
-            [routerLink]="['/chat', session.id]"
-            routerLinkActive="is-active"
-            [attr.title]="collapsed() ? session.title : null"
-          >
-            <!-- Both forms are always rendered and CSS decides which is visible. That's what lets a
-                 media query collapse the rail on a narrow screen without the component having to
-                 know the viewport width - see the breakpoint at the end of session-list.css. -->
-            <span class="session__initial">{{ initialOf(session.title) }}</span>
-            @if (renamingId() === session.id) {
+          @if (renamingId() === session.id) {
+            <!-- While renaming, the row is deliberately NOT the routerLink <a>. An <input> nested
+                 inside an <a href> is invalid HTML, and in practice clicking that input triggers the
+                 anchor's NATIVE navigation - a full page load that destroys the edit in progress.
+                 stopPropagation() on the input stops RouterLink from seeing the click, but that's
+                 exactly the problem: RouterLink is then never given the chance to preventDefault(),
+                 and stopPropagation alone cannot cancel the browser's own default action. Swapping
+                 the anchor out entirely removes the navigation target rather than fighting it. -->
+            <div class="session" [class.is-active]="renamingRowWasActive()">
+              <span class="session__initial">{{ initialOf(session.title) }}</span>
               <input
                 #renameField
                 class="session__rename-field label"
                 type="text"
                 [ngModel]="renameText()"
                 (ngModelChange)="renameText.set($event)"
-                (click)="$event.stopPropagation()"
                 (keydown.enter)="commitRename(session)"
                 (keydown.escape)="cancelRename()"
                 (blur)="commitRename(session)"
               />
-            } @else {
+            </div>
+          } @else {
+            <a
+              class="session"
+              [routerLink]="['/chat', session.id]"
+              routerLinkActive="is-active"
+              [attr.title]="collapsed() ? session.title : null"
+            >
+              <!-- Both forms are always rendered and CSS decides which is visible. That's what lets a
+                   media query collapse the rail on a narrow screen without the component having to
+                   know the viewport width - see the breakpoint at the end of session-list.css. -->
+              <span class="session__initial">{{ initialOf(session.title) }}</span>
               <span class="session__title label">{{ session.title }}</span>
               <span class="session__time label">{{ session.updatedAt | date: 'd MMM' }}</span>
               <button
@@ -90,8 +99,8 @@
               >
                 ×
               </button>
-            }
-          </a>
+            </a>
+          }
         </li>
       }
     </ul>

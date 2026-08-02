@@ -77,6 +77,12 @@ export class SessionList implements OnInit {
   readonly renamingId = signal<string | null>(null);
   readonly renameText = signal('');
 
+  /** The renaming row is rendered as a plain <div> rather than the routerLink <a> (see the template
+   * comment for why), and routerLinkActive only decorates the anchor - so the "this is the open
+   * conversation" highlight would drop off the row for as long as you were editing it. Captured once
+   * when renaming starts and applied manually, so the row doesn't visibly change colour mid-edit. */
+  readonly renamingRowWasActive = signal(false);
+
   @ViewChild('renameField') private renameFieldRef?: ElementRef<HTMLInputElement>;
 
   ngOnInit(): void {
@@ -148,6 +154,7 @@ export class SessionList implements OnInit {
   startRename(session: ChatSessionSummary, event: Event): void {
     event.stopPropagation();
     event.preventDefault();
+    this.renamingRowWasActive.set(this.router.url.includes(session.id));
     this.renamingId.set(session.id);
     this.renameText.set(session.title);
 
