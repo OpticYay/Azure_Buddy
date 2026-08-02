@@ -1,9 +1,10 @@
 import { Pipe, PipeTransform, inject } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
-/** Renders the small subset of markdown the LLM actually writes - **bold**, `code`, and "* "/"- "
- * bullet lists - as real HTML instead of literal asterisks/backticks (this was previously plain
- * text interpolation, so a reply like "call `get_my_work_items`" showed the backticks verbatim).
+/** Renders the small subset of markdown the LLM actually writes - **bold**, *italic*/_italic_,
+ * `code`, and "* "/"- " bullet lists - as real HTML instead of literal asterisks/underscores/
+ * backticks (this was previously plain text interpolation, so a reply like "call
+ * `get_my_work_items`" showed the backticks verbatim, and "*logo missing*" showed the asterisks).
  * Not a general markdown parser: no headings, links, nested lists, or numbered lists, because the
  * system prompt never asks the model to produce those here - only handling what's actually used
  * keeps this small enough to read in one sitting instead of reaching for a dependency.
@@ -63,11 +64,19 @@ function renderMarkdownLite(raw: string): string {
   return blocks.join('');
 }
 
-/** Bold and inline code only - applied AFTER escaping, to text that's already had its literal `<`/`&`
- * neutralized, so these regexes only ever match markdown syntax, never something disguised as HTML. */
+/** Applied AFTER escaping, to text that's already had its literal `<`/`&` neutralized, so these
+ * regexes only ever match markdown syntax, never something disguised as HTML.
+ *
+ * Bold is matched before single-asterisk italic so "**x**" doesn't get read as italic-around-bold
+ * ("*", then "*x*", then a stray "*"). The underscore-italic regex requires a non-word character (or
+ * string start/end) on both outer sides of each underscore - without that guard, every snake_case
+ * identifier in a reply (`search_work_items`, `work_item_id`, ...) would have a fragment of itself
+ * turned into <em> around its middle underscore. */
 function renderInline(escapedLine: string): string {
   return escapedLine
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^\s*][^*]*?)\*/g, '<em>$1</em>')
+    .replace(/(?<![\w_])_([^\s_][^_]*?)_(?![\w_])/g, '<em>$1</em>')
     .replace(/`([^`]+?)`/g, '<code>$1</code>');
 }
 
