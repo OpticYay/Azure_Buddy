@@ -26,33 +26,41 @@
           <dd>{{ settings()?.useFallback ? 'Enabled' : 'Off' }}</dd>
         </dl>
 
-        <div class="provider-block">
-          <p class="provider-block__label micro">Gemini</p>
-          <dl class="readout">
-            <dt class="micro">Model</dt>
-            <dd>{{ settings()?.geminiModel }}</dd>
-            <dt class="micro">Base URL</dt>
-            <dd>{{ settings()?.geminiBaseUrl }}</dd>
-            <dt class="micro">Timeout</dt>
-            <dd>{{ settings()?.geminiTimeoutSeconds }}s</dd>
-            <dt class="micro">API key</dt>
-            <dd class="readout__masked">{{ settings()?.maskedGeminiApiKey ?? 'Not set' }}</dd>
-          </dl>
-        </div>
+        @if (viewGeminiVisible()) {
+          <div class="provider-block">
+            <p class="provider-block__label micro">
+              Gemini · {{ settings()?.primaryProvider === 'Gemini' ? 'Primary' : 'Secondary' }}
+            </p>
+            <dl class="readout">
+              <dt class="micro">Model</dt>
+              <dd>{{ settings()?.geminiModel }}</dd>
+              <dt class="micro">Base URL</dt>
+              <dd>{{ settings()?.geminiBaseUrl }}</dd>
+              <dt class="micro">Timeout</dt>
+              <dd>{{ settings()?.geminiTimeoutSeconds }}s</dd>
+              <dt class="micro">API key</dt>
+              <dd class="readout__masked">{{ settings()?.maskedGeminiApiKey ?? 'Not set' }}</dd>
+            </dl>
+          </div>
+        }
 
-        <div class="provider-block">
-          <p class="provider-block__label micro">Ollama</p>
-          <dl class="readout">
-            <dt class="micro">Model</dt>
-            <dd>{{ settings()?.ollamaModel }}</dd>
-            <dt class="micro">Base URL</dt>
-            <dd>{{ settings()?.ollamaBaseUrl }}</dd>
-            <dt class="micro">Context size</dt>
-            <dd>{{ settings()?.ollamaNumCtx }}</dd>
-            <dt class="micro">Timeout</dt>
-            <dd>{{ settings()?.ollamaTimeoutSeconds }}s</dd>
-          </dl>
-        </div>
+        @if (viewOllamaVisible()) {
+          <div class="provider-block">
+            <p class="provider-block__label micro">
+              Ollama · {{ settings()?.primaryProvider === 'Ollama' ? 'Primary' : 'Secondary' }}
+            </p>
+            <dl class="readout">
+              <dt class="micro">Model</dt>
+              <dd>{{ settings()?.ollamaModel }}</dd>
+              <dt class="micro">Base URL</dt>
+              <dd>{{ settings()?.ollamaBaseUrl }}</dd>
+              <dt class="micro">Context size</dt>
+              <dd>{{ settings()?.ollamaNumCtx }}</dd>
+              <dt class="micro">Timeout</dt>
+              <dd>{{ settings()?.ollamaTimeoutSeconds }}s</dd>
+            </dl>
+          </div>
+        }
 
         <div class="actions">
           <button type="button" class="btn btn--primary" (click)="startEditing()">Update model settings</button>
@@ -75,8 +83,10 @@
             </label>
           </div>
 
-          <fieldset class="provider-fields">
-            <legend class="micro">Gemini</legend>
+          <fieldset class="provider-fields" [hidden]="!geminiFieldsVisible()">
+            <legend class="micro">
+              Gemini · {{ form.controls.primaryProvider.value === 'Gemini' ? 'Primary' : 'Secondary' }}
+            </legend>
 
             <label class="field">
               <span class="micro">Model</span>
@@ -111,8 +121,10 @@
             </label>
           </fieldset>
 
-          <fieldset class="provider-fields">
-            <legend class="micro">Ollama</legend>
+          <fieldset class="provider-fields" [hidden]="!ollamaFieldsVisible()">
+            <legend class="micro">
+              Ollama · {{ form.controls.primaryProvider.value === 'Ollama' ? 'Primary' : 'Secondary' }}
+            </legend>
 
             <label class="field">
               <span class="micro">Model</span>

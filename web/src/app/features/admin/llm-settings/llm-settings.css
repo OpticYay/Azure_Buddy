@@ -179,6 +179,14 @@ form {
   gap: var(--space-md);
 }
 
+/* The `hidden` attribute is a UA-stylesheet rule (`[hidden] { display: none }`), which this class's
+   own `display: flex` above - an author rule, always outranks UA rules regardless of specificity -
+   silently overrides. Restating `display: none` here, with a selector specific enough to win, is
+   what actually makes [hidden] hide the fieldset. */
+.provider-fields[hidden] {
+  display: none;
+}
+
 .provider-fields legend {
   padding: 0 0 var(--space-sm);
   color: var(--ink-500, var(--ink-400));

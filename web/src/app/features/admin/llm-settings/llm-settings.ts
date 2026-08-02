@@ -1,4 +1,5 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 
@@ -45,6 +46,33 @@ export class LlmSettings implements OnInit {
     ollamaBaseUrl: ['', [Validators.required, Validators.pattern(/^https?:\/\/.+/)]],
     ollamaNumCtx: [8192, [Validators.required, Validators.min(256), Validators.max(131072)]],
     ollamaTimeoutSeconds: [60, [Validators.required, Validators.min(1), Validators.max(600)]],
+  });
+
+  // Reading these off signals (rather than calling form.controls.x.value directly in the template)
+  // is deliberate: this app is zoneless, so a plain method call in the template only re-evaluates
+  // when *something else* triggers change detection. toSignal ties it to valueChanges, which is a
+  // reliable, guaranteed re-render trigger (see message-composer.ts for the version of this bug
+  // where a plain field write silently didn't reach the DOM).
+  private readonly primaryProviderValue = toSignal(this.form.controls.primaryProvider.valueChanges, {
+    initialValue: this.form.controls.primaryProvider.value,
+  });
+  private readonly useFallbackValue = toSignal(this.form.controls.useFallback.valueChanges, {
+    initialValue: this.form.controls.useFallback.value,
+  });
+
+  // A provider's fields only matter if Buddy will actually call it: as the primary, always; as the
+  // fallback, only once "try the other provider" is switched on. Otherwise its fieldset just adds
+  // noise to a form for a provider nothing will ever use - so it stays hidden, not merely disabled.
+  readonly geminiFieldsVisible = computed(() => this.primaryProviderValue() === 'Gemini' || this.useFallbackValue());
+  readonly ollamaFieldsVisible = computed(() => this.primaryProviderValue() === 'Ollama' || this.useFallbackValue());
+
+  readonly viewGeminiVisible = computed(() => {
+    const s = this.settings();
+    return !!s && (s.primaryProvider === 'Gemini' || s.useFallback);
+  });
+  readonly viewOllamaVisible = computed(() => {
+    const s = this.settings();
+    return !!s && (s.primaryProvider === 'Ollama' || s.useFallback);
   });
 
   ngOnInit(): void {
