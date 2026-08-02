@@ -1,0 +1,254 @@
+/* Same base pattern as ado-settings.css (card/readout/field/actions/btn) - duplicated rather than
+   shared, matching how this codebase already keeps each feature's styles self-contained (login and
+   register are the one exception, sharing through src/styles.css, because they're literally the same
+   layout with one extra field - this screen is a different enough shape not to force that). */
+:host {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.page {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--space-2xl) var(--space-lg);
+}
+
+.page__head {
+  margin-bottom: var(--space-lg);
+  padding-left: var(--space-md);
+  border-left: 2px solid var(--brass);
+}
+
+h1 {
+  font-size: var(--t-display);
+  margin-bottom: var(--space-xs);
+}
+
+.page__sub {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--t-sm);
+}
+
+.card {
+  padding: var(--space-lg);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+}
+
+.state {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--ink-300);
+}
+
+.notice {
+  margin: 0 0 var(--space-lg);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--brass-wash);
+  border: 1px solid var(--brass-rule);
+  border-radius: var(--r-sm);
+  color: var(--brass-deep);
+  font-size: var(--t-sm);
+}
+
+.readout {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 0;
+  margin: 0;
+}
+
+.readout dt {
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.readout dd {
+  margin: 0;
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  color: var(--ink-800);
+  overflow-wrap: anywhere;
+}
+
+.readout__masked {
+  letter-spacing: 0.08em;
+}
+
+/* A read-mode section per provider, visually grouped under its own label - the same "instrument
+   panel section" language as the edit-mode <fieldset>s below, so the two modes read as two views of
+   the same structure rather than unrelated layouts. */
+.provider-block {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--rule);
+}
+
+.provider-block__label {
+  margin: 0 0 var(--space-sm);
+  color: var(--ink-500, var(--ink-400));
+}
+
+/* ── Form ────────────────────────────────────────────────────────────────────────────────── */
+form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.provider-select {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-lg);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--rule);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.field input,
+.field select {
+  padding: 9px var(--space-sm);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+}
+
+.field select {
+  min-width: 160px;
+}
+
+.field input:focus-visible,
+.field select:focus-visible {
+  outline: none;
+  border-color: var(--brass);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--brass-wash);
+}
+
+.field__error {
+  font-size: var(--t-sm);
+  color: var(--fail);
+}
+
+.field__note {
+  font-size: var(--t-sm);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--t-sm);
+  color: var(--ink-700);
+  padding-bottom: 9px;
+}
+
+.checkbox-field input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--brass);
+}
+
+/* A plain HTML <fieldset>/<legend> - one of the few native elements that already does exactly what's
+   needed here (visually group a set of inputs under a label) without inventing a custom component
+   for it. Reset browser default fieldset styling first since it ships its own border/padding. */
+.provider-fields {
+  margin: 0;
+  padding: 0;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.provider-fields legend {
+  padding: 0 0 var(--space-sm);
+  color: var(--ink-500, var(--ink-400));
+}
+
+.alert {
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--fail-wash);
+  border: 1px solid var(--fail-rule);
+  border-radius: var(--r-sm);
+  color: var(--fail);
+  font-size: var(--t-sm);
+}
+
+/* ── Actions ─────────────────────────────────────────────────────────────────────────────── */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 8px var(--space-md);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-700);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 500;
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--ink-400);
+  background: var(--surface-hover);
+}
+
+.btn--primary {
+  border-color: var(--ink-900);
+  background: var(--ink-900);
+  color: var(--surface);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--ink-700);
+  border-color: var(--ink-700);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+@media (max-width: 560px) {
+  .page {
+    padding: var(--space-lg) var(--space-md);
+  }
+
+  .readout {
+    grid-template-columns: 1fr;
+  }
+
+  .readout dt {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+}

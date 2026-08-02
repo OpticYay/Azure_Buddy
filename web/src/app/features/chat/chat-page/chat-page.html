@@ -1,0 +1,12 @@
+<app-session-list></app-session-list>
+
+<div class="panel">
+  @if (sessionId(); as id) {
+    <app-message-thread [sessionId]="id" />
+  } @else {
+    <div class="blank">
+      <p class="blank__lead">No conversation open</p>
+      <p class="blank__hint">Pick one from the list, or start a new conversation to file a defect.</p>
+    </div>
+  }
+</div>

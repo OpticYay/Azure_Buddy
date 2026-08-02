@@ -1,0 +1,112 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.log {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-xl) var(--space-lg) var(--space-lg);
+  /* The log is a reading column - capped and centred so entries don't stretch to a 2000px line
+     length on a wide monitor. */
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+  /* Flex column purely so the empty state can vertically centre itself with `margin: auto 0`.
+     Entries stack exactly as they would in a block container. */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Flex children default to shrinking to fit, which in a scrolling column squashes tall entries
+   instead of letting the container scroll. */
+.log > * {
+  flex-shrink: 0;
+}
+
+.state {
+  margin: var(--space-2xl) 0 0;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--ink-300);
+}
+
+.state--fail {
+  color: var(--fail);
+}
+
+/* Empty state as an invitation to act, not an apology for having nothing. It's also the only place
+   the tool's deterministic flows are discoverable, so it earns real space rather than being one
+   small line of grey text floating in a large empty panel. */
+.opener {
+  margin: auto 0;
+  padding-left: var(--space-lg);
+  border-left: 2px solid var(--brass);
+}
+
+.opener__lead {
+  margin: 0 0 var(--space-xs);
+  font-family: var(--font-display);
+  font-variation-settings: 'wdth' 118;
+  font-weight: 700;
+  font-size: var(--t-display);
+  letter-spacing: -0.02em;
+  color: var(--ink-900);
+}
+
+.opener__hint {
+  margin: 0 0 var(--space-lg);
+  max-width: 46ch;
+  color: var(--text-muted);
+}
+
+.starters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+/* Each chip carries a brass leading marker, echoing the stamp motif without pretending to be a
+   work item id. Hover lifts it a hair - enough to read as pressable, not enough to bounce. */
+.starter {
+  padding: 7px var(--space-md);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-700);
+  font-size: var(--t-sm);
+  text-align: left;
+}
+
+.starter::before {
+  content: '›';
+  margin-right: var(--space-sm);
+  color: var(--brass);
+  font-weight: 600;
+}
+
+.starter:hover {
+  border-color: var(--brass);
+  background: var(--brass-wash);
+  color: var(--ink-900);
+  transform: translateY(-1px);
+}
+
+@media (max-width: 640px) {
+  .log {
+    padding: var(--space-lg) var(--space-md) var(--space-md);
+  }
+}

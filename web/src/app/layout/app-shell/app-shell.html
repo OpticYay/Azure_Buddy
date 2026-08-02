@@ -1,0 +1,41 @@
+<!--
+  The shared frame for every signed-in screen. A few Angular-specific things in here:
+  - `routerLink` (not `href`) hands the click to the Angular Router, which swaps the
+    <router-outlet> contents instead of doing a full browser page reload.
+  - `routerLinkActive="is-active"` adds that class automatically while the link's route is the
+    current one, so no "which page am I on" logic is needed in the component class.
+  - `<router-outlet>` is the placeholder the Router fills with whichever child route matched.
+-->
+<header class="bar">
+  <a class="brand" routerLink="/chat">
+    <!-- The mark echoes the work item stamp used throughout the app: mono, bracketed, brass. -->
+    <span class="brand__mark">AB</span>
+    <span class="brand__name">Azure Buddy</span>
+  </a>
+
+  <nav class="nav">
+    <a routerLink="/chat" routerLinkActive="is-active">Chat</a>
+    <a routerLink="/settings/ado" routerLinkActive="is-active">Connection</a>
+    @if (isAdmin()) {
+      <!-- Only rendered for an Admin - hiding the link isn't the actual security boundary
+           (LlmSettingsController's [Authorize(Roles = "Admin")] on the backend is), it just keeps a
+           non-admin from seeing a settings screen they have no reason to open. -->
+      <a routerLink="/admin/llm" routerLinkActive="is-active">Model</a>
+    }
+  </nav>
+
+  <div class="account">
+    @if (currentUser(); as user) {
+      <!-- `@if (expr; as user)` checks the condition AND binds the non-null result to a local
+           template variable, so we don't call currentUser() twice and TypeScript can narrow it. -->
+      <span class="account__email">{{ user.email }}</span>
+    }
+    <button type="button" class="btn-quiet" (click)="logout()">Sign out</button>
+  </div>
+</header>
+
+<main class="stage">
+  <router-outlet></router-outlet>
+</main>
+
+<app-toast-container></app-toast-container>

@@ -1,0 +1,129 @@
+/* Scoped to app-shell.html only - Angular's view encapsulation means a bare `nav a` rule here
+ * cannot leak out and restyle links in any other component. */
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* The petrol bar. Deep, flat, with a brass hairline along the bottom - the app's one persistent
+   piece of chrome, and where the palette announces itself. */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  padding: 0 var(--space-lg);
+  height: 52px;
+  flex-shrink: 0;
+  background: var(--ink-900);
+  border-bottom: 1px solid var(--brass);
+  position: relative;
+  z-index: 2;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  text-decoration: none;
+}
+
+.brand__mark {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--brass);
+  border-radius: var(--r-sm);
+  color: var(--brass-lift);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.brand__name {
+  font-family: var(--font-display);
+  font-variation-settings: 'wdth' 118;
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: -0.005em;
+  color: var(--surface);
+}
+
+.nav {
+  display: flex;
+  gap: var(--space-lg);
+  flex: 1;
+}
+
+/* Nav items are instrument labels, not sentence-case links - mono, tracked, uppercase, matching
+   every other label in the app. */
+.nav a {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 500;
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--ink-200);
+  padding: 4px 0;
+  border-bottom: 1px solid transparent;
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+
+.nav a:hover {
+  color: var(--surface);
+}
+
+.nav a.is-active {
+  color: var(--brass-lift);
+  border-bottom-color: var(--brass);
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.account__email {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-300);
+}
+
+.btn-quiet {
+  padding: 5px var(--space-sm);
+  border: 1px solid var(--ink-700);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-200);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+}
+
+.btn-quiet:hover {
+  border-color: var(--brass);
+  color: var(--brass-lift);
+}
+
+.stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+@media (max-width: 640px) {
+  .bar {
+    gap: var(--space-md);
+    padding: 0 var(--space-md);
+  }
+
+  .brand__name,
+  .account__email {
+    display: none;
+  }
+}

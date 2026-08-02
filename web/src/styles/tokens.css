@@ -1,0 +1,106 @@
+/*
+ * ── Design tokens ──────────────────────────────────────────────────────────────────────────────
+ *
+ * What tokens are, if you haven't met the pattern: named CSS variables ("custom properties") that
+ * every component references instead of hardcoding a value. Without them, "the accent color" ends
+ * up copy-pasted as a raw hex code into a dozen component files, and changing it means hunting
+ * through all of them. With them, components write `color: var(--brass)` - a reference, not a copy -
+ * so this one file is the only place a color, spacing step, or radius is ever decided.
+ *
+ * ── The direction: "Instrument" ────────────────────────────────────────────────────────────────
+ *
+ * This is a QA tool. Its user is mid-test, finds a defect, and files it with evidence attached to
+ * an Azure DevOps record. The world it belongs to is measurement and documentation - gauges, logs,
+ * case files, evidence tags - not consumer messaging. So:
+ *
+ *   PETROL      a deep blue-green near-black. Structural, instrument-panel, and specifically NOT
+ *               Azure DevOps' own product blue - this is a companion tool sitting alongside ADO,
+ *               not a clone wearing its colors.
+ *   SAGE PAPER  a cool pale grey-green canvas. Deliberately not cream/beige.
+ *   BRASS       the single accent, used sparingly: active markers, work item IDs, primary actions.
+ *               Brass is the color of measuring instruments, and it's a hue this kind of tool
+ *               almost never reaches for.
+ *   PASS/FAIL   muted, clinical green and brick red. QA runs on state; state gets real color.
+ */
+:root {
+  /* ── Petrol ink scale (structure + text) ─────────────────────────────────────────────────── */
+  --ink-900: #0b1a1b;
+  --ink-800: #12292a;
+  --ink-700: #1b3a3a;
+  --ink-600: #2c4a4a;
+  --ink-400: #5a7878;
+  --ink-300: #7e9695;
+  --ink-200: #9db0ae;
+
+  /* ── Surfaces ────────────────────────────────────────────────────────────────────────────── */
+  --paper: #edf0eb;
+  --surface: #ffffff;
+  --surface-sunk: #f6f8f4;
+  --surface-hover: #eef1ec;
+  --rule: #d8dfd8;
+  --rule-strong: #c2ccc2;
+
+  /* ── Brass accent ────────────────────────────────────────────────────────────────────────── */
+  --brass: #a97c2f;
+  --brass-lift: #c79a45;
+  --brass-deep: #7d5a1f;
+  --brass-wash: #f6efdf;
+  --brass-rule: #e3d3ae;
+
+  /* ── State ───────────────────────────────────────────────────────────────────────────────── */
+  --pass: #1f6f4a;
+  --pass-wash: #e5f0e9;
+  --pass-rule: #b9d6c6;
+
+  --fail: #a63328;
+  --fail-wash: #fae9e7;
+  --fail-rule: #eec4bf;
+
+  --warn: #8a6a18;
+  --warn-wash: #f7f0dc;
+
+  /* ── Semantic aliases ────────────────────────────────────────────────────────────────────── */
+  --text: var(--ink-900);
+  --text-soft: var(--ink-600);
+  --text-muted: var(--ink-400);
+
+  /* ── Type ────────────────────────────────────────────────────────────────────────────────── */
+  --font-display: 'Archivo', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  --t-display: clamp(1.6rem, 1.15rem + 1.9vw, 2.35rem);
+  --t-title: 1.3125rem;
+  --t-body: 0.9375rem;
+  --t-sm: 0.8125rem;
+  /* The mono "instrument label" size - used for role tags, state tags, field labels, timestamps.
+     Always uppercase with wide tracking, which is what makes it read as an instrument readout
+     rather than just small text. */
+  --t-micro: 0.6875rem;
+  --track-micro: 0.09em;
+
+  /* ── Spacing (4 / 8 / 16 / 24 / 32 / 48) ─────────────────────────────────────────────────── */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+
+  /* ── Shape ───────────────────────────────────────────────────────────────────────────────── */
+  /* Small, precise radii read as machined/instrument. Fully rounded 10-12px corners are the
+     generic SaaS default; zero radius tips into the newspaper look. 3/6px sits between them. */
+  --r-sm: 3px;
+  --r-md: 6px;
+
+  --shadow-card: 0 1px 2px rgba(11, 26, 27, 0.05), 0 8px 24px -12px rgba(11, 26, 27, 0.18);
+  --shadow-float: 0 12px 32px -8px rgba(11, 26, 27, 0.28);
+
+  /* ── Layout ──────────────────────────────────────────────────────────────────────────────── */
+  --sidebar-width: 264px;
+  --sidebar-collapsed-width: 60px;
+
+  /* ── Motion ──────────────────────────────────────────────────────────────────────────────── */
+  --t-fast: 130ms cubic-bezier(0.3, 0, 0.2, 1);
+  --t-base: 220ms cubic-bezier(0.3, 0, 0.2, 1);
+}

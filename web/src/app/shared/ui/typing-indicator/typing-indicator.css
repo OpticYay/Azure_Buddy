@@ -1,0 +1,70 @@
+:host {
+  display: block;
+}
+
+.pending {
+  padding-left: var(--space-md);
+  border-left: 2px solid var(--rule-strong);
+}
+
+.pending__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.pending__role {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--ink-600);
+}
+
+.pending__hr {
+  flex: 1;
+  height: 1px;
+  background: var(--rule);
+}
+
+.pending__body {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+}
+
+/* A blinking block caret rather than three bouncing dots. Dots are the messaging-app convention;
+   a caret is what a log looks like while a line is being written, which is the metaphor this whole
+   thread is built on. Plain CSS @keyframes, not @angular/animations - an indefinite loop has no
+   state change for Angular's animation system to hook into. */
+.pending__caret {
+  width: 7px;
+  height: 14px;
+  background: var(--brass);
+  animation: blink 1s steps(1, end) infinite;
+}
+
+.pending__label {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--ink-400);
+}
+
+@keyframes blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  50.01%,
+  100% {
+    opacity: 0;
+  }
+}

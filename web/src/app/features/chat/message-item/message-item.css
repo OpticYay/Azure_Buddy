@@ -1,0 +1,237 @@
+/* The host element is what MessageThread applies its [@fadeSlideIn] animation to, so it needs to be
+   a block for the transform to have any effect. */
+:host {
+  display: block;
+  margin-bottom: var(--space-lg);
+}
+
+/* ── The entry ───────────────────────────────────────────────────────────────────────────────
+   No bubbles, no left/right alignment. Every entry starts at the same left edge like lines in a
+   log, and identity is carried by the role label, the rule colour, and a background tint instead.
+   That's a deliberate trade: alignment is the familiar chat convention, but it forces structured
+   payloads (results tables, record confirmations) into a shape that fights them. */
+.entry {
+  padding-left: var(--space-md);
+  border-left: 2px solid var(--rule-strong);
+}
+
+/* Your own entries are marked in brass - the accent colour, used here because "which of these did
+   I write" is worth one glance, not a whole layout convention. */
+.entry.is-you {
+  border-left-color: var(--brass);
+}
+
+.entry.is-failed {
+  border-left-color: var(--fail);
+}
+
+/* A defect actually filed is the best outcome this product has. The rule carries that signal, so
+   the card itself doesn't need extra prose announcing it. */
+.entry.is-recorded {
+  border-left-color: var(--pass);
+}
+
+/* ── Header rule: ROLE ──────────── TAG   TIME ─────────────────────────────────────────────── */
+.entry__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.entry__role,
+.entry__tag,
+.entry__time {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 500;
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.entry__role {
+  color: var(--ink-600);
+  font-weight: 600;
+}
+
+.entry.is-you .entry__role {
+  color: var(--brass-deep);
+}
+
+/* The hairline that fills the space between the role and the tag - it's what makes the header read
+   as a ruled log line rather than a row of floating labels. */
+.entry__hr {
+  flex: 1;
+  height: 1px;
+  background: var(--rule);
+}
+
+.entry__tag {
+  padding: 1px 6px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-600);
+}
+
+.entry.is-failed .entry__tag {
+  border-color: var(--fail-rule);
+  background: var(--fail-wash);
+  color: var(--fail);
+}
+
+.entry__time {
+  color: var(--ink-300);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Body ────────────────────────────────────────────────────────────────────────────────────
+   Your entries sit on a faint brass wash; Buddy's sit on white. Enough separation to scan at a
+   glance without turning the thread into two columns. */
+.entry__body {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+}
+
+.entry.is-you .entry__body {
+  background: var(--brass-wash);
+  border-color: var(--brass-rule);
+}
+
+.entry.is-failed .entry__body {
+  background: var(--fail-wash);
+  border-color: var(--fail-rule);
+}
+
+.prose {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.entry.is-failed .prose {
+  color: #7e241c;
+}
+
+/* ── Confirmation: a written record ──────────────────────────────────────────────────────────
+   The most important outcome in the whole product - a defect actually filed - so it gets the
+   clearest treatment: the brass work item stamp first, then what happened. */
+.record {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.record__head {
+  display: flex;
+  align-items: center;
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--rule);
+}
+
+/* The one place the work item stamp is scaled up - on the record that just created it. Same token,
+   same shape, more presence, so the motif stays consistent rather than becoming a second style. */
+.record__head .stamp--lg {
+  font-size: 0.95rem;
+  padding: 3px var(--space-sm);
+}
+
+.record__link {
+  align-self: flex-start;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 500;
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--brass-deep);
+  text-decoration: none;
+  border-bottom: 1px solid var(--brass-rule);
+  padding-bottom: 1px;
+}
+
+.record__link:hover {
+  border-bottom-color: var(--brass);
+}
+
+/* ── Results table ───────────────────────────────────────────────────────────────────────────
+   Data, so it's set in mono with tabular figures and hairline row rules. No alternating fills -
+   with a mono grid and consistent rules, zebra striping is one accessory too many. */
+.results {
+  overflow-x: auto;
+}
+
+.results table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.results th {
+  padding: 0 var(--space-md) var(--space-xs) 0;
+  text-align: left;
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--ink-400);
+  border-bottom: 1px solid var(--rule-strong);
+  white-space: nowrap;
+}
+
+.results td {
+  padding: var(--space-sm) var(--space-md) var(--space-sm) 0;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-800);
+  vertical-align: top;
+}
+
+.results tr:last-child td {
+  border-bottom: none;
+}
+
+.results .cell-id {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.results__count {
+  margin: var(--space-sm) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--ink-300);
+}
+
+/* ── Evidence ────────────────────────────────────────────────────────────────────────────────
+   A screenshot pinned to a work item is the emotional centre of this tool, so it's framed like a
+   tagged exhibit: bordered plate, caption naming the record it belongs to. */
+.evidence {
+  margin: var(--space-sm) 0 0;
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  background: var(--surface-sunk);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+}
+
+.evidence img {
+  display: block;
+  max-width: min(280px, 100%);
+  max-height: 280px;
+  border-radius: 2px;
+}
+
+.evidence figcaption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}

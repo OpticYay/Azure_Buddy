@@ -1,0 +1,284 @@
+/* A component's host element (<app-session-list>) is display:inline by default. Without this rule it
+   can't act as a flex item in the chat page's row layout, so the rail sized to its content and
+   stopped partway down the page instead of running full height. Any component that IS a layout
+   region needs an explicit :host display. */
+:host {
+  display: flex;
+  flex-shrink: 0;
+  align-self: stretch;
+}
+
+.rail {
+  /* Width itself comes from the [@sidebarWidth] Angular animation - overflow:hidden keeps content
+     from wrapping awkwardly mid-transition. */
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-sm);
+  background: var(--surface);
+  border-right: 1px solid var(--rule);
+}
+
+.rail__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+/* At 60px there is no room for the toggle and the new-conversation button side by side, so they
+   stack. Without this the new button (still flex:1) collapses to an unusable sliver. */
+.rail.is-collapsed .rail__head {
+  flex-direction: column;
+}
+
+.toggle {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+
+.toggle:hover {
+  border-color: var(--ink-300);
+  background: var(--surface-hover);
+}
+
+/* Chevron drawn from two borders on a rotated square - no icon font or SVG needed for one glyph. */
+.toggle__chevron {
+  width: 6px;
+  height: 6px;
+  border-left: 1.5px solid var(--ink-400);
+  border-bottom: 1.5px solid var(--ink-400);
+  transform: rotate(45deg) translate(1px, -1px);
+  transition: transform var(--t-base);
+}
+
+.rail.is-collapsed .toggle__chevron {
+  transform: rotate(225deg) translate(1px, -1px);
+}
+
+.new {
+  flex: 1;
+  padding: 7px var(--space-sm);
+  border: 1px solid var(--ink-900);
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  color: var(--surface);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 500;
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.new:hover:not(:disabled) {
+  background: var(--ink-700);
+  border-color: var(--ink-700);
+}
+
+.new:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.new__icon {
+  display: none;
+}
+
+.rail.is-collapsed .new {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.rail.is-collapsed .new__label {
+  display: none;
+}
+
+.rail.is-collapsed .new__icon {
+  display: inline;
+}
+
+.rail__label {
+  margin: var(--space-sm) 0 0;
+  padding: 0 var(--space-sm);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 500;
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--ink-300);
+}
+
+.note {
+  margin: 0;
+  padding: 0 var(--space-sm);
+  font-size: var(--t-sm);
+  color: var(--text-muted);
+}
+
+.note--fail {
+  color: var(--fail);
+}
+
+.sessions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+
+.session {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 7px var(--space-sm);
+  border-radius: var(--r-sm);
+  text-decoration: none;
+  color: var(--ink-700);
+  min-height: 34px;
+  border-left: 2px solid transparent;
+  transition: background var(--t-fast), border-color var(--t-fast), transform var(--t-fast);
+}
+
+.session:hover {
+  background: var(--surface-hover);
+  /* A 1px nudge toward the content - reads as the row responding, without the layout shifting
+     enough to be distracting while scanning a list. */
+  transform: translateX(2px);
+}
+
+/* The open conversation is marked in brass - the same accent as your own log entries and every
+   work item stamp, so "current / yours / identified" is one consistent colour across the app. */
+.session.is-active {
+  background: var(--brass-wash);
+  border-left-color: var(--brass);
+  color: var(--ink-900);
+}
+
+/* Hidden while the rail is wide; the title/date/delete controls take over. Both are always in the
+   DOM so a media query can swap them without the component tracking viewport width. */
+.session__initial {
+  display: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin: 0 auto;
+  flex-shrink: 0;
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+  border: 1px solid var(--rule);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  color: var(--ink-600);
+}
+
+.session.is-active .session__initial {
+  background: var(--brass-wash);
+  border-color: var(--brass-rule);
+  color: var(--brass-deep);
+}
+
+.session__title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-sm);
+}
+
+.session__time {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-300);
+  white-space: nowrap;
+}
+
+.session__remove {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink-300);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.session__remove:hover {
+  color: var(--fail);
+}
+
+.more {
+  margin-top: var(--space-xs);
+  padding: 6px var(--space-sm);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--ink-600);
+  white-space: nowrap;
+}
+
+.more:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+/* Text fades out as the rail narrows. Plain CSS opacity, matched to the width animation's duration
+   so both finish together. */
+.label {
+  opacity: 1;
+  transition: opacity var(--t-base);
+}
+
+.rail.is-collapsed .label {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Collapsed: swap the row's contents for the single-letter marker. `display: none` rather than the
+   opacity fade used on the labels, because these must not occupy layout space in a 60px rail. */
+.rail.is-collapsed .session__title,
+.rail.is-collapsed .session__time,
+.rail.is-collapsed .session__remove {
+  display: none;
+}
+
+.rail.is-collapsed .session__initial {
+  display: grid;
+}
+
+.rail.is-collapsed .session {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* No breakpoint here on purpose. "The screen is too narrow for a full rail" is decided once, in
+   session-list.ts, and folded into the same `collapsed()` signal as the user's own preference - so
+   this stylesheet only ever has to describe one collapsed state instead of maintaining a duplicate
+   copy of it inside a media query. */

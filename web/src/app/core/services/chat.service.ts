@@ -1,0 +1,69 @@
+import { Injectable, inject } from '@angular/core';
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { Observable } from 'rxjs';
+
+import { environment } from '../../../environments/environment';
+import {
+  AppendMessageResult,
+  ChatResponse,
+  ChatSessionDetail,
+  ChatSessionSummary,
+  CreateSessionRequest,
+  PagedResult,
+} from '../models/chat.models';
+
+const CHATS_BASE_URL = `${environment.apiUrl}/api/chats`;
+const LIVE_CHAT_URL = `${environment.apiUrl}/chat`;
+
+@Injectable({ providedIn: 'root' })
+export class ChatService {
+  private readonly http = inject(HttpClient);
+
+  listSessions(page: number, pageSize: number): Observable<PagedResult<ChatSessionSummary>> {
+    const params = new HttpParams().set('page', page).set('pageSize', pageSize);
+    return this.http.get<PagedResult<ChatSessionSummary>>(CHATS_BASE_URL, { params });
+  }
+
+  getSession(sessionId: string): Observable<ChatSessionDetail> {
+    return this.http.get<ChatSessionDetail>(`${CHATS_BASE_URL}/${sessionId}`);
+  }
+
+  createSession(title: string | null): Observable<ChatSessionDetail> {
+    const request: CreateSessionRequest = { title };
+    return this.http.post<ChatSessionDetail>(CHATS_BASE_URL, request);
+  }
+
+  deleteSession(sessionId: string): Observable<void> {
+    return this.http.delete<void>(`${CHATS_BASE_URL}/${sessionId}`);
+  }
+
+  /** The "smart" path: POST /chat routes the message through the backend's deterministic flows /
+   * conversational agent (see IntentRouter on the backend) and returns its reply. The backend persists
+   * BOTH the user's message and the reply itself - this call doesn't need a separate "save my message"
+   * step, unlike the screenshot path below. Text-only messages always go through here, never through
+   * the multipart endpoint (that one exists specifically for the screenshot case - see ChatsController). */
+  sendMessage(sessionId: string, message: string): Observable<ChatResponse> {
+    return this.http.post<ChatResponse>(LIVE_CHAT_URL, { sessionId, message });
+  }
+
+  /** The screenshot path: POST /api/chats/{id}/messages as multipart/form-data (a plain JSON body
+   * can't carry binary file data). Unlike sendMessage above, this does NOT invoke the agent/routing -
+   * it just records the message and uploads+links the screenshot to the given ADO work item; no
+   * assistant reply is generated for it. `FormData` is the browser API for building a multipart body -
+   * conceptually a set of key/value pairs where a value can be a file, mirroring exactly what
+   * ChatsController.AppendMessageAsync expects as [FromForm] parameters. */
+  appendScreenshotMessage(
+    sessionId: string,
+    content: string,
+    workItemId: number,
+    screenshot: File,
+  ): Observable<AppendMessageResult> {
+    const formData = new FormData();
+    formData.append('role', 'User');
+    formData.append('content', content);
+    formData.append('workItemId', String(workItemId));
+    formData.append('screenshot', screenshot, screenshot.name);
+
+    return this.http.post<AppendMessageResult>(`${CHATS_BASE_URL}/${sessionId}/messages`, formData);
+  }
+}

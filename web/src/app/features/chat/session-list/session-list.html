@@ -1,0 +1,75 @@
+<!--
+  `[@sidebarWidth]` attaches the width trigger from shared/animations.ts, driven by whichever state
+  string the expression evaluates to - Angular watches that value and plays the matching transition.
+  `[class.is-collapsed]` separately toggles a plain CSS class used for the label fade. Two different
+  mechanisms (Angular-driven width, CSS-driven opacity) reading the same collapsed() signal, tuned
+  to the same duration so they land together.
+-->
+<aside class="rail" [class.is-collapsed]="collapsed()" [@sidebarWidth]="collapsed() ? 'collapsed' : 'expanded'">
+  <div class="rail__head">
+    @if (canToggle()) {
+      <button
+        type="button"
+        class="toggle"
+        [attr.aria-label]="collapsed() ? 'Expand conversation list' : 'Collapse conversation list'"
+        (click)="toggleCollapsed()"
+      >
+        <span class="toggle__chevron" aria-hidden="true"></span>
+      </button>
+    }
+
+    <!-- Same "render both, let CSS choose" approach as the conversation rows below, so the narrow
+         breakpoint can swap the label for a "+" without the component tracking viewport width. -->
+    <button type="button" class="new" (click)="newChat()" [disabled]="creatingNew()" title="New conversation">
+      <span class="new__icon" aria-hidden="true">+</span>
+      <span class="new__label">{{ creatingNew() ? 'Starting…' : 'New conversation' }}</span>
+    </button>
+  </div>
+
+  @if (!collapsed()) {
+    <p class="rail__label label">Conversations</p>
+  }
+
+  @if (loading()) {
+    <p class="note label">Loading…</p>
+  } @else if (loadError()) {
+    <p class="note note--fail label">{{ loadError() }}</p>
+  } @else if (sessions().length === 0) {
+    <p class="note label">No conversations yet. Start one to file a bug or look up work items.</p>
+  } @else {
+    <!-- [@listStagger] cascades the rows in as the list first renders (see shared/animations.ts). -->
+    <ul class="sessions" [@listStagger]>
+      @for (session of sessions(); track session.id) {
+        <li>
+          <a
+            class="session"
+            [routerLink]="['/chat', session.id]"
+            routerLinkActive="is-active"
+            [attr.title]="collapsed() ? session.title : null"
+          >
+            <!-- Both forms are always rendered and CSS decides which is visible. That's what lets a
+                 media query collapse the rail on a narrow screen without the component having to
+                 know the viewport width - see the breakpoint at the end of session-list.css. -->
+            <span class="session__initial">{{ initialOf(session.title) }}</span>
+            <span class="session__title label">{{ session.title }}</span>
+            <span class="session__time label">{{ session.updatedAt | date: 'd MMM' }}</span>
+            <button
+              type="button"
+              class="session__remove label"
+              title="Delete conversation"
+              (click)="deleteSession(session, $event)"
+            >
+              ×
+            </button>
+          </a>
+        </li>
+      }
+    </ul>
+
+    @if (hasMore() && !collapsed()) {
+      <button type="button" class="more label" (click)="loadMore()" [disabled]="loadingMore()">
+        {{ loadingMore() ? 'Loading…' : 'Load older' }}
+      </button>
+    }
+  }
+</aside>
