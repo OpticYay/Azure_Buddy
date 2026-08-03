@@ -1,8 +1,9 @@
-import { Component, ElementRef, OnDestroy, ViewChild, inject, input, output, signal } from '@angular/core';
+import { Component, ElementRef, OnDestroy, ViewChild, computed, effect, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 
 import { ChatService } from '../../../core/services/chat.service';
+import { ChatActivityService } from '../../../core/services/chat-activity.service';
 import { extractApiErrorMessage } from '../../../core/models/api-error.model';
 import { popIn } from '../../../shared/animations';
 
@@ -22,15 +23,14 @@ import { popIn } from '../../../shared/animations';
 })
 export class MessageComposer implements OnDestroy {
   private readonly chatService = inject(ChatService);
+  private readonly chatActivity = inject(ChatActivityService);
 
   readonly sessionId = input.required<string>();
-  readonly messageSent = output<void>();
 
-  /** Fired only around the text-send path (POST /chat), true right before the request goes out and
-   * false once it settles - MessageThread listens for this to show/hide the "agent is thinking" typing
-   * indicator while the reply is in flight. Not used for screenshot sends, since a screenshot upload
-   * has its own "Sending…" button state already and doesn't produce an agent reply to wait for. */
-  readonly awaitingReply = output<boolean>();
+  /** Carries the session the message was sent TO, not whichever one is open when the reply lands -
+   * a slow reply can settle after the user has already switched conversations, and the thread has to
+   * be able to tell that it's being told about a session it's no longer showing. */
+  readonly messageSent = output<string>();
 
   /** Fired the moment a text send actually goes out, carrying the text itself - lets MessageThread
    * show the user's own message immediately instead of waiting for the round trip to finish and the
@@ -59,8 +59,22 @@ export class MessageComposer implements OnDestroy {
 
   readonly attachedFile = signal<File | null>(null);
   readonly attachedPreviewUrl = signal<string | null>(null);
-  readonly sending = signal(false);
+  /** Whether THIS composer's own session has a request in flight. Derived from the shared service
+   * rather than held here, so a reply pending in another conversation no longer disables this one's
+   * Send button - and so the state survives this component being destroyed and rebuilt. */
+  readonly sending = computed(() => this.chatActivity.isWorking(this.sessionId()));
   readonly errorMessage = signal<string | null>(null);
+
+  constructor() {
+    // Third piece of state that outlived the conversation it belonged to (see the working indicator
+    // and pendingMessage): this component is reused across session switches, so "Could not send that
+    // message" from one conversation stayed pinned above the composer in the next one. Reading
+    // sessionId() is what subscribes this effect to it.
+    effect(() => {
+      this.sessionId();
+      this.errorMessage.set(null);
+    });
+  }
 
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
@@ -174,9 +188,12 @@ export class MessageComposer implements OnDestroy {
       return;
     }
 
-    this.sending.set(true);
+    // Captured now rather than read again in the callbacks: the user can switch conversations while
+    // this request is in flight, at which point sessionId() reports the NEW session. Every use below
+    // has to stay pinned to the session the message was actually sent to.
+    const sessionId = this.sessionId();
+
     this.errorMessage.set(null);
-    this.awaitingReply.emit(true);
     // Clear the box the moment the message is on its way, not once the reply comes back - the model
     // can take several seconds to answer, and leaving the sent text sitting in the box reads as "did
     // this actually send?" rather than "Buddy is working on it." Restore it on failure below so a
@@ -184,15 +201,13 @@ export class MessageComposer implements OnDestroy {
     this.messageText.set('');
     this.messageSubmitted.emit(text);
 
-    this.chatService.sendMessage(this.sessionId(), text).subscribe({
+    // track() marks this session busy and clears it via finalize() when the request settles, however
+    // it settles - see chat-activity.service.ts.
+    this.chatActivity.track(sessionId, this.chatService.sendMessage(sessionId, text)).subscribe({
       next: () => {
-        this.sending.set(false);
-        this.awaitingReply.emit(false);
-        this.messageSent.emit();
+        this.messageSent.emit(sessionId);
       },
       error: () => {
-        this.sending.set(false);
-        this.awaitingReply.emit(false);
         this.messageText.set(text);
         this.messageFailed.emit();
         this.errorMessage.set('Could not send that message. Please try again.');
@@ -210,7 +225,7 @@ export class MessageComposer implements OnDestroy {
       return;
     }
 
-    this.sending.set(true);
+    const sessionId = this.sessionId();
     this.errorMessage.set(null);
 
     // ChatsController's [Required] on the `content` form field rejects an empty string outright
@@ -219,27 +234,27 @@ export class MessageComposer implements OnDestroy {
     // so we default to a placeholder rather than forcing the user to type something meaningless.
     const content = this.messageText().trim() || 'Screenshot attached.';
 
-    this.chatService.appendScreenshotMessage(this.sessionId(), content, workItemId, file).subscribe({
-      next: () => {
-        // Note: a 200 response here does NOT necessarily mean the screenshot was successfully linked
-        // in Azure DevOps - AppendMessageResult.success can be false (e.g. ADO rejected the request)
-        // while the HTTP call itself still succeeds, because the backend always records a ChatMessage
-        // either way (see AzureBuddy.Core/Chat/ChatSessionService.AppendMessageWithScreenshotAsync).
-        // We don't need to branch on that here: whichever happened, the resulting message (a normal
-        // success or an "I couldn't attach..." failure message) is already saved, and messageClassifier
-        // will render it correctly (as 'screenshot' or 'error') once MessageThread reloads the list.
-        this.sending.set(false);
-        this.messageText.set('');
-        this.removeAttachment();
-        this.messageSent.emit();
-      },
-      error: (err: HttpErrorResponse) => {
-        this.sending.set(false);
-        // Both AdoNotConfiguredException (ChatsController's catch block) and a plain validation
-        // failure (missing workItemId, oversized file) now use the same ApiErrorResponse shape - no
-        // more guessing which kind of 400 this is by inspecting the body's type.
-        this.errorMessage.set(extractApiErrorMessage(err.error, 'Could not upload that screenshot. Please try again.'));
-      },
-    });
+    this.chatActivity
+      .track(sessionId, this.chatService.appendScreenshotMessage(sessionId, content, workItemId, file))
+      .subscribe({
+        next: () => {
+          // Note: a 200 response here does NOT necessarily mean the screenshot was successfully linked
+          // in Azure DevOps - AppendMessageResult.success can be false (e.g. ADO rejected the request)
+          // while the HTTP call itself still succeeds, because the backend always records a ChatMessage
+          // either way (see AzureBuddy.Core/Chat/ChatSessionService.AppendMessageWithScreenshotAsync).
+          // We don't need to branch on that here: whichever happened, the resulting message (a normal
+          // success or an "I couldn't attach..." failure message) is already saved, and messageClassifier
+          // will render it correctly (as 'screenshot' or 'error') once MessageThread reloads the list.
+          this.messageText.set('');
+          this.removeAttachment();
+          this.messageSent.emit(sessionId);
+        },
+        error: (err: HttpErrorResponse) => {
+          // Both AdoNotConfiguredException (ChatsController's catch block) and a plain validation
+          // failure (missing workItemId, oversized file) now use the same ApiErrorResponse shape - no
+          // more guessing which kind of 400 this is by inspecting the body's type.
+          this.errorMessage.set(extractApiErrorMessage(err.error, 'Could not upload that screenshot. Please try again.'));
+        },
+      });
   }
 }

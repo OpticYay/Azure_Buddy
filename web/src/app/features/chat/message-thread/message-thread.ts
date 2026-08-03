@@ -1,6 +1,7 @@
 import { Component, ElementRef, Injector, ViewChild, afterNextRender, computed, effect, inject, input, signal } from '@angular/core';
 
 import { ChatService } from '../../../core/services/chat.service';
+import { ChatActivityService } from '../../../core/services/chat-activity.service';
 import { AdoSettingsService } from '../../../core/services/ado-settings.service';
 import { ChatMessageView } from '../../../core/models/chat.models';
 import { classifyMessage } from '../../../core/services/message-classifier';
@@ -37,6 +38,7 @@ const STARTERS = [
 })
 export class MessageThread {
   private readonly chatService = inject(ChatService);
+  private readonly chatActivity = inject(ChatActivityService);
   private readonly adoSettingsService = inject(AdoSettingsService);
   private readonly injector = inject(Injector);
 
@@ -58,9 +60,11 @@ export class MessageThread {
   readonly loading = signal(true);
   readonly loadError = signal<string | null>(null);
 
-  /** Driven by MessageComposer's (awaitingReply) output - true while a text message's POST /chat call
-   * is in flight, so the typing indicator shows exactly during that window. */
-  readonly isAwaitingReply = signal(false);
+  /** True while THIS session has a request in flight, so the typing indicator shows in the
+   * conversation the message was actually sent to and nowhere else. Read from the shared service
+   * rather than tracked here, so it neither leaks into the next conversation you open nor resets to
+   * false just because you visited the Connection page and came back. */
+  readonly isAwaitingReply = computed(() => this.chatActivity.isWorking(this.sessionId()));
 
   /** Built once from the user's saved ADO settings (see AdoSettingsService) and handed down to every
    * MessageItem so it can render real, clickable "open in Azure DevOps" links for work item ids -
@@ -83,6 +87,11 @@ export class MessageThread {
   constructor() {
     effect(() => {
       const id = this.sessionId();
+      // Same "state that outlived its session" bug the working indicator had: this component is reused
+      // across session switches, so an optimistic message added to session A stayed on screen and got
+      // rendered into session B's log until B's fetch came back and replaced it. Dropped synchronously
+      // here rather than waiting for loadMessages' response, which is exactly the window it was visible in.
+      this.pendingMessage.set(null);
       this.loadMessages(id);
     });
 
@@ -119,8 +128,14 @@ export class MessageThread {
    * {sessionId, reply} (no id/timestamp for the persisted messages), so re-fetching is the simplest
    * way to get the authoritative, fully-populated message list back - acceptable for a QA-internal
    * tool's message volume, though a high-traffic chat app would want to append optimistically instead. */
-  onMessageSent(): void {
-    this.loadMessages(this.sessionId());
+  onMessageSent(sessionId: string): void {
+    // A reply can land after the user has already opened a different conversation. Reloading
+    // `this.sessionId()` on any completion meant a slow reply in session A triggered a redundant
+    // refetch of whichever session was on screen, so guard on the id the composer actually sent to.
+    if (sessionId !== this.sessionId()) {
+      return;
+    }
+    this.loadMessages(sessionId);
   }
 
   /** Builds a throwaway ChatMessageView for the pending bubble - never sent anywhere, just enough shape
@@ -142,13 +157,6 @@ export class MessageThread {
 
   onMessageFailed(): void {
     this.pendingMessage.set(null);
-  }
-
-  onAwaitingReplyChange(awaiting: boolean): void {
-    this.isAwaitingReply.set(awaiting);
-    if (awaiting) {
-      this.scrollToBottom();
-    }
   }
 
   private scrollToBottom(): void {
