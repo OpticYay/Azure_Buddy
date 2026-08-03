@@ -96,7 +96,10 @@ public sealed class IntentRouter
         IReadOnlyList<IReadOnlyList<string>>? tableRows = null) =>
         string.IsNullOrWhiteSpace(text)
             ? new ChatReply(
-                "Sorry, I'm having trouble processing that right now (both the primary and fallback models failed to respond). Please try again in a moment.",
+                // Deliberately doesn't say "both the primary and fallback models" - how many providers
+                // are configured is an admin setting (often just one), so naming two invents detail the
+                // reader can act on wrongly, sending them to check a fallback that doesn't exist.
+                "Sorry, I couldn't get a response from the AI model just now. It may be slow to respond or unreachable - please try again in a moment, or check the model settings if this keeps happening.",
                 ChatMessageType.Error)
             : new ChatReply(text.Trim(), type, workItemId, tableHeaders, tableRows);
 }
