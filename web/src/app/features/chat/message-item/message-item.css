@@ -121,37 +121,84 @@
   white-space: normal;
 }
 
-.prose p {
+/* ── Everything below targets markdown-lite.pipe.ts's output, so it needs ::ng-deep ──────────────
+   Those <p>/<ul>/<li>/<code>/<table> elements arrive through [innerHTML], and Angular only stamps
+   its _ngcontent-* scoping attribute on elements that were in the TEMPLATE at compile time. A plain
+   `.prose p` rule compiles to `.prose p[_ngcontent-xxx]`, which injected nodes can never match - so
+   these rules silently did nothing at all until they were written this way. `:host` keeps the
+   piercing scoped to this component rather than leaking these element selectors app-wide.
+   (.prose itself is in the template, so the rules above it don't need this.) */
+:host ::ng-deep .prose p {
   margin: 0 0 var(--space-sm);
 }
 
-.prose p:last-child {
+:host ::ng-deep .prose p:last-child {
   margin-bottom: 0;
 }
 
-.prose ul {
+:host ::ng-deep .prose ul {
   margin: 0 0 var(--space-sm);
   padding-left: 1.25em;
 }
 
-.prose ul:last-child {
+:host ::ng-deep .prose ul:last-child {
   margin-bottom: 0;
 }
 
-.prose li {
+:host ::ng-deep .prose li {
   margin-bottom: var(--space-xs);
 }
 
-.prose li:last-child {
+:host ::ng-deep .prose li:last-child {
   margin-bottom: 0;
 }
 
-.prose code {
+:host ::ng-deep .prose code {
   padding: 1px 4px;
   border-radius: 3px;
   background: var(--surface-sunk);
   font-family: var(--font-mono);
   font-size: 0.9em;
+}
+
+/* A markdown table the agent wrote in prose (see markdown-lite.pipe.ts). Deliberately styled to
+   match .results below - a table of work items should read the same whether it came from a
+   deterministic flow's structured data or the agent's own markdown, since to the user they're the
+   same kind of answer. */
+:host ::ng-deep .prose-table {
+  margin: var(--space-sm) 0;
+  overflow-x: auto;
+}
+
+:host ::ng-deep .prose-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+:host ::ng-deep .prose-table th {
+  padding: 0 var(--space-md) var(--space-xs) 0;
+  text-align: left;
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--ink-400);
+  border-bottom: 1px solid var(--rule-strong);
+  white-space: nowrap;
+}
+
+:host ::ng-deep .prose-table td {
+  padding: var(--space-sm) var(--space-md) var(--space-sm) 0;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-800);
+  vertical-align: top;
+}
+
+:host ::ng-deep .prose-table tr:last-child td {
+  border-bottom: none;
 }
 
 .entry.is-failed .prose {

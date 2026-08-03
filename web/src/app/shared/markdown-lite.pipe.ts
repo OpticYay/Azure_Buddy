@@ -2,12 +2,18 @@ import { Pipe, PipeTransform, inject } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
 /** Renders the small subset of markdown the LLM actually writes - **bold**, *italic* or _italic_,
- * `code`, and "* "/"- " bullet lists - as real HTML instead of literal asterisks/underscores/
+ * `code`, "* "/"- " bullet lists, and pipe tables - as real HTML instead of literal asterisks/pipes/
  * backticks (this was previously plain text interpolation, so a reply like "call
  * `get_my_work_items`" showed the backticks verbatim, and "*logo missing*" showed the asterisks).
  * Not a general markdown parser: no headings, links, nested lists, or numbered lists, because the
  * system prompt never asks the model to produce those here - only handling what's actually used
  * keeps this small enough to read in one sitting instead of reaching for a dependency.
+ *
+ * Tables matter specifically because the deterministic flows (ViewBugsFlow, MyItemsFlow) return
+ * STRUCTURED table data that message-item.html renders directly, but the conversational agent writes
+ * its replies as prose and is tagged Text - so when a request resolves a work item by NAME rather
+ * than numeric id it goes to the agent, whose "output a markdown table" instruction previously
+ * landed here as literal pipe characters.
  *
  * HTML-escapes the raw text FIRST, before any of our own tags are added - the input is LLM output,
  * not a static template, so it must be treated as untrusted the same way user input would be. Only
@@ -45,7 +51,22 @@ function renderMarkdownLite(raw: string): string {
     }
   };
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // A table is the one construct here that spans multiple lines and can't be decided from the
+    // current line alone - "| a | b |" on its own is just text until the NEXT line turns out to be a
+    // |---|---| separator. So this peeks ahead one line, and on a match consumes the whole run of
+    // rows itself rather than letting the per-line branches below see them.
+    const tableEnd = tryTableAt(lines, i);
+    if (tableEnd !== null) {
+      flushParagraph();
+      flushList();
+      blocks.push(renderTable(lines.slice(i, tableEnd)));
+      i = tableEnd - 1;
+      continue;
+    }
+
     const bulletMatch = /^\s*[*-]\s+(.*)$/.exec(line);
     if (bulletMatch) {
       flushParagraph();
@@ -62,6 +83,52 @@ function renderMarkdownLite(raw: string): string {
   flushList();
 
   return blocks.join('');
+}
+
+/** If a markdown table starts at `start`, returns the index just past its last row; otherwise null.
+ * Requires a header row followed by a |---|:--:|---| separator - the separator is what distinguishes
+ * a real table from prose that merely happens to contain pipe characters. */
+function tryTableAt(lines: string[], start: number): number | null {
+  const isRow = (line: string | undefined) => !!line && line.trim().startsWith('|');
+  const isSeparator = (line: string | undefined) =>
+    !!line && /^\s*\|(\s*:?-{1,}:?\s*\|)+\s*$/.test(line);
+
+  if (!isRow(lines[start]) || !isSeparator(lines[start + 1])) {
+    return null;
+  }
+
+  let end = start + 2;
+  while (isRow(lines[end]) && !isSeparator(lines[end])) {
+    end++;
+  }
+  return end;
+}
+
+function renderTable(tableLines: string[]): string {
+  const headers = splitRow(tableLines[0]);
+  const bodyRows = tableLines.slice(2).map(splitRow);
+
+  const head = `<tr>${headers.map((h) => `<th>${renderInline(h)}</th>`).join('')}</tr>`;
+  const body = bodyRows
+    .map((cells) => `<tr>${cells.map((c) => `<td>${renderInline(c)}</td>`).join('')}</tr>`)
+    .join('');
+
+  // Wrapped so a wide result set scrolls inside the message instead of stretching the whole thread,
+  // matching how message-item.html already frames the structured (deterministic-flow) tables.
+  return `<div class="prose-table"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+}
+
+/** Splits "| a | b |" into ["a", "b"] - the leading/trailing pipes produce empty edge entries that
+ * aren't cells, so they're dropped rather than rendered as blank columns. */
+function splitRow(line: string): string[] {
+  const cells = line.trim().split('|');
+  if (cells.length > 0 && cells[0].trim() === '') {
+    cells.shift();
+  }
+  if (cells.length > 0 && cells[cells.length - 1].trim() === '') {
+    cells.pop();
+  }
+  return cells.map((c) => c.trim());
 }
 
 /** Applied AFTER escaping, to text that's already had its literal `<`/`&` neutralized, so these
