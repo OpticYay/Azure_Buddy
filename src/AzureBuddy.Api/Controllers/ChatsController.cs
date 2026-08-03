@@ -80,6 +80,18 @@ public sealed class ChatsController : ControllerBase
         return deleted ? NoContent() : NotFound();
     }
 
+    /// <summary>Cleanup for sessions that got created but never received a first message - see
+    /// ChatSessionService.DeleteEmptySessionsAsync. Scoped to the caller's own sessions like every other
+    /// action here, not a global admin sweep, so this can only ever clean up the caller's own clutter.
+    /// The literal "empty" segment is unambiguous against {sessionId:guid} above - "empty" can never
+    /// parse as a Guid, so routing always resolves to this action rather than that one.</summary>
+    [HttpDelete("empty")]
+    public async Task<ActionResult<int>> DeleteEmptyAsync(CancellationToken cancellationToken)
+    {
+        var count = await _chatSessionService.DeleteEmptySessionsAsync(User.GetRequiredUserId(), cancellationToken);
+        return Ok(count);
+    }
+
     /// <summary>
     /// Accepts multipart/form-data so the same endpoint handles both a plain text message and one with
     /// an attached screenshot - "role"/"content"/"workItemId" as form fields, "screenshot" as an

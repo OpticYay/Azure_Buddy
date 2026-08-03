@@ -1,9 +1,10 @@
-import { Component, DestroyRef, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, ElementRef, OnInit, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 
 import { ChatService } from '../../../core/services/chat.service';
+import { NewChatService } from '../../../core/services/new-chat.service';
 import { ChatSessionSummary } from '../../../core/models/chat.models';
 import { listStagger, sidebarWidth } from '../../../shared/animations';
 
@@ -27,12 +28,12 @@ const NARROW_SCREEN = '(max-width: 720px)';
 })
 export class SessionList implements OnInit {
   private readonly chatService = inject(ChatService);
+  private readonly newChatService = inject(NewChatService);
   private readonly router = inject(Router);
 
   readonly sessions = signal<ChatSessionSummary[]>([]);
   readonly loading = signal(true);
   readonly loadError = signal<string | null>(null);
-  readonly creatingNew = signal(false);
 
   // ── Collapsed state: one source of truth ──────────────────────────────────────────────────────
   // Read synchronously at construction so the rail renders in its remembered state on the very
@@ -59,6 +60,18 @@ export class SessionList implements OnInit {
     // DestroyRef is Angular's hook for "run this when the component is torn down" - without removing
     // the listener, every visit to this route would leave another one attached to matchMedia.
     inject(DestroyRef).onDestroy(() => query.removeEventListener('change', onChange));
+
+    // A draft conversation (started via newChat() below) turned into a real, persisted session the
+    // moment its first message was sent - MessageThread learns this from its own GET and reports it
+    // here (see new-chat.service.ts) rather than this component polling or refetching the whole list.
+    // Filtering out an id already present guards against the signal firing twice for the same session
+    // (e.g. StrictMode-style re-runs) producing a duplicate row.
+    effect(() => {
+      const created = this.newChatService.created();
+      if (created) {
+        this.sessions.update((existing) => [created, ...existing.filter((s) => s.id !== created.id)]);
+      }
+    });
   }
 
   // Pagination state: how many pages we've loaded so far, and whether the server has more beyond
@@ -128,25 +141,20 @@ export class SessionList implements OnInit {
     this.loadNextPage(false);
   }
 
+  /** Used to call POST /api/chats immediately, persisting a real (empty) session before the user had
+   * typed a single word - every click left a permanent, untitled row in the sidebar whether or not the
+   * user ever sent anything. A session is a record that a conversation actually happened; there's
+   * nothing to persist yet at the moment this button is clicked.
+   *
+   * So this is now purely local and synchronous: no backend call, no id, nothing added to `sessions`.
+   * It navigates to the bare /chat route (ChatPage/MessageThread's "draft" state - see those files) and
+   * tells that draft to reset via requestNewChat(), which is what makes a second click still clear a
+   * typed-but-unsent draft even though the URL doesn't change the second time (there's nowhere further
+   * to navigate to until a message is actually sent). The session only gets created - and only then
+   * appears here, via the `created` effect in the constructor above - once that happens. */
   newChat(): void {
-    this.creatingNew.set(true);
-    this.chatService.createSession(null).subscribe({
-      next: (session) => {
-        this.creatingNew.set(false);
-        // Add the new session to the top of the list immediately, so the sidebar reflects it without
-        // waiting for a full reload - a small but common pattern: update local state optimistically
-        // from a response you already have, instead of re-fetching the whole list just to see one change.
-        this.sessions.update((existing) => [
-          { id: session.id, title: session.title, createdAt: session.createdAt, updatedAt: session.updatedAt },
-          ...existing,
-        ]);
-        this.router.navigate(['/chat', session.id]);
-      },
-      error: () => {
-        this.creatingNew.set(false);
-        this.loadError.set('Could not start a new chat.');
-      },
-    });
+    this.newChatService.requestNewChat();
+    this.router.navigateByUrl('/chat');
   }
 
   /** Opens the inline rename field for one row, seeded with its current title - not the empty string,

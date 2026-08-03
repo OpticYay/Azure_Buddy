@@ -49,6 +49,7 @@
   <app-message-composer
     [sessionId]="sessionId()"
     (messageSent)="onMessageSent($event)"
+    (sessionCreated)="onSessionCreated($event)"
     (messageSubmitted)="onMessageSubmitted($event)"
     (messageFailed)="onMessageFailed()"
   />

@@ -20,9 +20,9 @@
 
     <!-- Same "render both, let CSS choose" approach as the conversation rows below, so the narrow
          breakpoint can swap the label for a "+" without the component tracking viewport width. -->
-    <button type="button" class="new" (click)="newChat()" [disabled]="creatingNew()" title="New conversation">
+    <button type="button" class="new" (click)="newChat()" title="New conversation">
       <span class="new__icon" aria-hidden="true">+</span>
-      <span class="new__label">{{ creatingNew() ? 'Starting…' : 'New conversation' }}</span>
+      <span class="new__label">New conversation</span>
     </button>
   </div>
 

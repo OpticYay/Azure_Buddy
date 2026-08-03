@@ -1,7 +1,9 @@
 import { Component, ElementRef, Injector, ViewChild, afterNextRender, computed, effect, inject, input, signal } from '@angular/core';
+import { Router } from '@angular/router';
 
 import { ChatService } from '../../../core/services/chat.service';
 import { ChatActivityService } from '../../../core/services/chat-activity.service';
+import { DRAFT_SESSION_KEY, NewChatService } from '../../../core/services/new-chat.service';
 import { AdoSettingsService } from '../../../core/services/ado-settings.service';
 import { ChatMessageView } from '../../../core/models/chat.models';
 import { classifyMessage } from '../../../core/services/message-classifier';
@@ -39,10 +41,15 @@ const STARTERS = [
 export class MessageThread {
   private readonly chatService = inject(ChatService);
   private readonly chatActivity = inject(ChatActivityService);
+  private readonly newChatService = inject(NewChatService);
   private readonly adoSettingsService = inject(AdoSettingsService);
+  private readonly router = inject(Router);
   private readonly injector = inject(Injector);
 
-  readonly sessionId = input.required<string>();
+  /** Null on the bare /chat route: "no conversation open yet" - not an error state, the composer still
+   * renders (see the template) and is ready to start a brand-new one. See ChatPage/chat-page.html,
+   * which now always mounts this component instead of only doing so once a session id exists. */
+  readonly sessionId = input<string | null>(null);
 
   private readonly messages = signal<ChatMessageView[]>([]);
 
@@ -64,7 +71,7 @@ export class MessageThread {
    * conversation the message was actually sent to and nowhere else. Read from the shared service
    * rather than tracked here, so it neither leaks into the next conversation you open nor resets to
    * false just because you visited the Connection page and came back. */
-  readonly isAwaitingReply = computed(() => this.chatActivity.isWorking(this.sessionId()));
+  readonly isAwaitingReply = computed(() => this.chatActivity.isWorking(this.sessionId() ?? DRAFT_SESSION_KEY));
 
   /** Built once from the user's saved ADO settings (see AdoSettingsService) and handed down to every
    * MessageItem so it can render real, clickable "open in Azure DevOps" links for work item ids -
@@ -84,15 +91,32 @@ export class MessageThread {
     this.composer?.prefill(prompt);
   }
 
+  /** Set right before navigating from a draft to the session the composer just created, so the next
+   * loadMessages() call knows to also tell the sidebar about it - see onSessionCreated and
+   * loadMessages' success handler below. */
+  private readonly pendingNewSessionId = signal<string | null>(null);
+
   constructor() {
     effect(() => {
       const id = this.sessionId();
+      // Re-run this effect even when `id` itself hasn't changed (e.g. "New Conversation" clicked again
+      // while already on the bare /chat route) - reading resetToken() is what makes that happen.
+      this.newChatService.resetToken();
       // Same "state that outlived its session" bug the working indicator had: this component is reused
       // across session switches, so an optimistic message added to session A stayed on screen and got
       // rendered into session B's log until B's fetch came back and replaced it. Dropped synchronously
       // here rather than waiting for loadMessages' response, which is exactly the window it was visible in.
       this.pendingMessage.set(null);
-      this.loadMessages(id);
+
+      if (id) {
+        this.loadMessages(id);
+      } else {
+        // A draft conversation has nothing to fetch - GET /api/chats/{id} doesn't apply until a real
+        // session exists. Show the same empty/opener state a freshly-created, still-empty session would.
+        this.messages.set([]);
+        this.loading.set(false);
+        this.loadError.set(null);
+      }
     });
 
     this.adoSettingsService.get().subscribe((settings) => {
@@ -114,6 +138,21 @@ export class MessageThread {
         this.pendingMessage.set(null);
         this.loading.set(false);
         this.scrollToBottom();
+
+        // This GET already has everything the sidebar needs (title, timestamps) to show the entry that
+        // sending the first message just created - reusing it here means the sidebar updates without a
+        // second network call. Only fires for the one load that follows onSessionCreated's navigation,
+        // not on every ordinary open of an existing session (which would wrongly bump it to the top of
+        // a list ordered by UpdatedAt, since opening a session doesn't change UpdatedAt).
+        if (this.pendingNewSessionId() === sessionId) {
+          this.pendingNewSessionId.set(null);
+          this.newChatService.notifyCreated({
+            id: detail.id,
+            title: detail.title,
+            createdAt: detail.createdAt,
+            updatedAt: detail.updatedAt,
+          });
+        }
       },
       error: () => {
         this.loading.set(false);
@@ -157,6 +196,15 @@ export class MessageThread {
 
   onMessageFailed(): void {
     this.pendingMessage.set(null);
+  }
+
+  /** The composer's sessionId() was null and it just sent the first message of a brand-new
+   * conversation - the backend created a real session as a side effect of that single call (see
+   * ChatService.sendMessage's doc comment). Navigate there: the route change updates this component's
+   * own `sessionId` input, which re-runs the constructor's effect and loads the new session for real. */
+  onSessionCreated(newSessionId: string): void {
+    this.pendingNewSessionId.set(newSessionId);
+    this.router.navigate(['/chat', newSessionId]);
   }
 
   private scrollToBottom(): void {
