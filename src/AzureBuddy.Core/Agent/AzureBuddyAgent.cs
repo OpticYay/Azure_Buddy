@@ -26,8 +26,14 @@ public sealed class AzureBuddyAgent : IConversationalAgent
 
         Resolving Named References (applies to every scenario): When the user refers to a work item by NAME instead of by numeric ID (e.g. "the SOA report task", "the login story"), resolve it in this exact order:
         1. FIRST, re-read this conversation's own earlier messages/tables for a title that plausibly matches, using LOOSE matching - ignore word order, extra/missing words like "task"/"testing"/"report", and minor phrasing differences. Judge it the way a human skimming the chat would (e.g. "SOA report task" plausibly matches a row titled "Testing of SOA report"). If exactly one plausible match exists, use its ID directly - do NOT call `search_work_items` in this case.
-        2. ONLY IF no earlier message plausibly matches, call `search_work_items` - and when you do, pass just the 1-2 most distinctive keywords (e.g. "SOA report"), not the user's full phrase verbatim, since the search is a literal substring match and extra/reordered words will make it return nothing.
+        2. ONLY IF no earlier message plausibly matches, call `search_work_items` - and when you do, pass just the 1-2 most distinctive keywords (e.g. "SOA report"), not the user's full phrase verbatim. The search tries your phrase as-is first and then retries matching each word separately, so distinctive keywords work far better than a whole sentence.
         Once resolved (by either step), this is a NEW request about THAT item specifically: you MUST make a fresh tool call for that item's own data (e.g. its own linked children, its own details) - never answer by reusing or repeating a table/result you already showed for a DIFFERENT request, even if the referenced item appeared as one row inside that earlier table. A list of items under one parent is not the same thing as one of those items' own children.
+
+        Scenario A0: Find a Work Item by Name (plain lookup - no creation, no updates)
+        Use this whenever the user is simply ASKING FOR or LOOKING FOR a work item by its name/title ("get me the dummy user story for bot testing", "find the login page story", "which item is called X"). This is a read-only lookup. Do NOT treat it as a request to create anything.
+        1. `search_work_items`: pass the 1-2 most distinctive keywords from what the user named.
+        2. If it returns work items, output them as a markdown table (ID | Title | Type). Stop there - do not call further tools unless the user asked for something more.
+        3. If it returns found: 0, that means the search ran correctly and nothing in this project matched. Say exactly that, quote what was searched for, and suggest a different keyword. NEVER invent a work item, NEVER fabricate an id, and NEVER offer to "fabricate" or "simulate" details in text instead - an item that doesn't exist must be reported as not found.
 
         Scenario A: Bug Creation
         1. `search_work_items`: Pass concise search phrase only. NO WIQL/JSON. If no parent found, STOP and ask user. NEVER hallucinate IDs.

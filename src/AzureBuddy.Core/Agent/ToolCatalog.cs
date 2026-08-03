@@ -3,8 +3,10 @@ using AzureBuddy.Core.Llm.Models;
 
 namespace AzureBuddy.Core.Agent;
 
-/// <summary>Builds the AgentTool list, one per n8n ai_tool node. Descriptions are ported verbatim from
-/// each httpRequestTool node's toolDescription - the model leans on this exact wording.</summary>
+/// <summary>Builds the AgentTool list, one per n8n ai_tool node. Descriptions started as verbatim ports
+/// of each httpRequestTool node's toolDescription - the model leans on this exact wording - but they are
+/// now maintained here rather than kept frozen: the n8n originals assumed a large hosted model, and the
+/// thinner ones caused visible tool-selection failures on the self-hosted model this app can fall back to.</summary>
 public sealed class ToolCatalog
 {
     private readonly AdoWorkItemToolset _toolset;
@@ -21,7 +23,11 @@ public sealed class ToolCatalog
             Definition = new ToolDefinition
             {
                 Name = "search_work_items",
-                Description = "Search any workitem using name",
+                // Was "Search any workitem using name" - four words, against 1-3 explicit sentences on
+                // every other tool. A small local model reading the catalog had almost nothing telling it
+                // WHEN to reach for this, so a plain "find me the X story" request pattern-matched to bug
+                // creation and invented a parent_id instead of looking one up.
+                Description = "Use this tool to find work items by their title when the user refers to one by NAME rather than by numerical ID (e.g. 'the login page story', 'the SOA report task'). This is the ONLY way to turn a name into an id: call it before any tool that needs a numerical id, and never guess an id yourself. Provide one argument named name containing just the 1-2 most distinctive keywords from the title. Returns the matching work items with their ids, titles, and types; if nothing matches it returns found: 0, which means the search worked and there are genuinely no matches - report that plainly rather than inventing an item.",
                 ParametersSchema = Schema(("name", "string", "Concise search phrase - plain keyword(s) from the work item title only. No WIQL, no JSON, no quotes."))
             },
             InvokeAsync = _toolset.SearchWorkItemsAsync
