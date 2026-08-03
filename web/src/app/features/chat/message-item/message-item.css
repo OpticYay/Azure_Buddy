@@ -197,6 +197,22 @@
   vertical-align: top;
 }
 
+/* .prose sets overflow-wrap:anywhere so a pasted URL or stack trace can't blow out the message
+   width. Inherited into a table that's short on room, though, "anywhere" means exactly that - it
+   was splitting work item ids down the middle ("12174" rendering as "1217" then "4" on the next
+   line), which reads as two different numbers. Cells wrap between words like normal text instead;
+   if that overflows, .prose-table's own overflow-x scrolls rather than mangling the values. */
+:host ::ng-deep .prose-table th,
+:host ::ng-deep .prose-table td {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+/* The id column specifically should never wrap - it's short, and it's the value you scan down. */
+:host ::ng-deep .prose-table td:first-child {
+  white-space: nowrap;
+}
+
 :host ::ng-deep .prose-table tr:last-child td {
   border-bottom: none;
 }

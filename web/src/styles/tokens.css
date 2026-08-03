@@ -100,6 +100,14 @@
   --sidebar-width: 264px;
   --sidebar-collapsed-width: 60px;
 
+  /* The chat column's cap. Still capped rather than full-bleed - a line of prose stretched across a
+     2000px monitor is genuinely hard to read - but sized for this app's actual content, which is
+     dominated by ID/Title/Type/State work-item tables rather than paragraphs. The earlier 820px was
+     a prose-first figure that left roughly half the available width empty on a normal desktop and
+     squeezed those tables hard enough to wrap. Shared by the log and the composer so the two edges
+     always line up; they previously carried separate copies of the same number. */
+  --chat-column-width: 1180px;
+
   /* ── Motion ──────────────────────────────────────────────────────────────────────────────── */
   --t-fast: 130ms cubic-bezier(0.3, 0, 0.2, 1);
   --t-base: 220ms cubic-bezier(0.3, 0, 0.2, 1);
