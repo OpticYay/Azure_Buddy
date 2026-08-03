@@ -30,15 +30,52 @@ public sealed class AdoWorkItemToolset
     {
         var connection = _connectionAccessor.Require();
         var name = GetString(args, "name");
-        var ids = await _adoClient.QueryWiqlAsync(connection, WiqlQueryBuilder.SearchByTitle(name), ct);
 
-        if (ids.Count == 0)
+        if (string.IsNullOrWhiteSpace(name))
         {
-            return "[]";
+            return JsonSerializer.Serialize(new { error = "No search phrase provided. Pass keyword(s) from the work item title as 'name'." });
         }
 
-        var items = await _adoClient.GetWorkItemsAsync(connection, ids, new[] { AdoFields.Title, AdoFields.WorkItemType }, ct);
-        return SerializeItems(items);
+        try
+        {
+            // Try the phrase as typed first - an exact substring hit is the most precise answer. Only if
+            // that finds nothing do we widen to matching the words separately, so a confident phrase match
+            // is never diluted by looser results.
+            var ids = await _adoClient.QueryWiqlAsync(connection, WiqlQueryBuilder.SearchByTitle(name), ct);
+
+            if (ids.Count == 0)
+            {
+                var words = WiqlQueryBuilder.SearchWords(name);
+                if (words.Count > 0)
+                {
+                    ids = await _adoClient.QueryWiqlAsync(connection, WiqlQueryBuilder.SearchByTitleWords(words), ct);
+                }
+            }
+
+            if (ids.Count == 0)
+            {
+                // A structured "found nothing" rather than a bare "[]". The model was reading the empty
+                // array as though the call had failed and telling users "there was an error with the
+                // search phrase", which sends them off rewording a query that worked fine and genuinely
+                // had no matches.
+                return JsonSerializer.Serialize(new
+                {
+                    found = 0,
+                    searched = name,
+                    message = $"No open work items in this project have a title matching '{name}'. The search itself succeeded - there are simply no matches. Suggest the user try a different keyword from the title, or check whether the item is closed."
+                });
+            }
+
+            var items = await _adoClient.GetWorkItemsAsync(connection, ids, new[] { AdoFields.Title, AdoFields.WorkItemType }, ct);
+            return SerializeItems(items);
+        }
+        catch (AdoApiException ex)
+        {
+            // Every other tool here already reports ADO failures this way. Search didn't, so a real API
+            // failure surfaced through the agent loop's generic handler with no indication it came from
+            // Azure DevOps - indistinguishable, to the model, from a bad search phrase.
+            return JsonSerializer.Serialize(new { error = $"The Azure DevOps search request failed: {ex.Message}" });
+        }
     }
 
     public async Task<string> CreateLinkedBugAsync(JsonElement args, CancellationToken ct)

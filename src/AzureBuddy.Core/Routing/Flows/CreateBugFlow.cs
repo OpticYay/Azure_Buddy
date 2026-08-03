@@ -35,6 +35,21 @@ public sealed class CreateBugFlow
 
         if (parentIds.Count == 0)
         {
+            // Same widening the agent's search tool does: the extracted parent term is a paraphrase of
+            // the user's sentence, so it often isn't a contiguous substring of the real title. Without
+            // this, every such case fell through to the (slower) agent purely on word order.
+            var words = WiqlQueryBuilder.SearchWords(extracted.ParentSearchTerm);
+            if (words.Count > 0)
+            {
+                parentIds = await _adoClient.QueryWiqlAsync(
+                    connection,
+                    WiqlQueryBuilder.SearchByTitleWords(words),
+                    cancellationToken);
+            }
+        }
+
+        if (parentIds.Count == 0)
+        {
             return FlowResult.FallThroughToAgent();
         }
 
