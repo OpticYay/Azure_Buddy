@@ -27,12 +27,17 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 export class MarkdownLitePipe implements PipeTransform {
   private readonly sanitizer = inject(DomSanitizer);
 
-  transform(value: string | null | undefined): SafeHtml {
-    return this.sanitizer.bypassSecurityTrustHtml(renderMarkdownLite(value ?? ''));
+  /** `workItemBaseUrl` is the same value message-item.html uses for structured tables (e.g.
+   * "https://dev.azure.com/org/Project/_workitems/edit"). Pass it and ID-column cells in a markdown
+   * table become links to the work item, exactly as they already do in a deterministic flow's table.
+   * Omit it (or pass null, as when the user's ADO settings haven't loaded) and those cells stay
+   * plain text rather than becoming links that would 404. */
+  transform(value: string | null | undefined, workItemBaseUrl: string | null = null): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(renderMarkdownLite(value ?? '', workItemBaseUrl));
   }
 }
 
-function renderMarkdownLite(raw: string): string {
+function renderMarkdownLite(raw: string, workItemBaseUrl: string | null = null): string {
   const lines = escapeHtml(raw).split('\n');
   const blocks: string[] = [];
   let paragraphLines: string[] = [];
@@ -62,7 +67,7 @@ function renderMarkdownLite(raw: string): string {
     if (tableEnd !== null) {
       flushParagraph();
       flushList();
-      blocks.push(renderTable(lines.slice(i, tableEnd)));
+      blocks.push(renderTable(lines.slice(i, tableEnd), workItemBaseUrl));
       i = tableEnd - 1;
       continue;
     }
@@ -86,12 +91,26 @@ function renderMarkdownLite(raw: string): string {
 }
 
 /** If a markdown table starts at `start`, returns the index just past its last row; otherwise null.
- * Requires a header row followed by a |---|:--:|---| separator - the separator is what distinguishes
- * a real table from prose that merely happens to contain pipe characters. */
+ * Requires a header row followed by a separator row of dashes - the separator is what distinguishes a
+ * real table from prose that merely happens to contain pipe characters.
+ *
+ * Both GitHub-flavored table forms are accepted, with and without the outer pipes:
+ *     | ID | Title |        ID | Title
+ *     |----|-------|   and   --- | ---
+ *     | 12 | Login |        12 | Login
+ * Only the fenced form used to be recognized. The models writing these replies emit the bare form at
+ * least as often, and it was falling through to the paragraph branch and rendering as literal pipes. */
 function tryTableAt(lines: string[], start: number): number | null {
-  const isRow = (line: string | undefined) => !!line && line.trim().startsWith('|');
-  const isSeparator = (line: string | undefined) =>
-    !!line && /^\s*\|(\s*:?-{1,}:?\s*\|)+\s*$/.test(line);
+  const isRow = (line: string | undefined) => !!line && line.includes('|') && line.trim() !== '';
+  const isSeparator = (line: string | undefined) => {
+    if (!line || !line.includes('|')) {
+      return false;
+    }
+    // Requiring every cell to be dashes (and at least two of them) is what keeps this from matching an
+    // ordinary sentence that contains a pipe.
+    const cells = splitRow(line);
+    return cells.length >= 2 && cells.every((cell) => /^:?-+:?$/.test(cell));
+  };
 
   if (!isRow(lines[start]) || !isSeparator(lines[start + 1])) {
     return null;
@@ -104,18 +123,41 @@ function tryTableAt(lines: string[], start: number): number | null {
   return end;
 }
 
-function renderTable(tableLines: string[]): string {
+function renderTable(tableLines: string[], workItemBaseUrl: string | null = null): string {
   const headers = splitRow(tableLines[0]);
   const bodyRows = tableLines.slice(2).map(splitRow);
 
+  // Which column holds work item ids, so its cells can be linked. Matched by header name the same way
+  // message-item.ts's isIdColumn does, rather than assuming column 0 - the agent writes its own header
+  // row and doesn't always put ID first.
+  const idColumn = headers.findIndex((h) => h.trim().toUpperCase() === 'ID');
+
   const head = `<tr>${headers.map((h) => `<th>${renderInline(h)}</th>`).join('')}</tr>`;
   const body = bodyRows
-    .map((cells) => `<tr>${cells.map((c) => `<td>${renderInline(c)}</td>`).join('')}</tr>`)
+    .map(
+      (cells) =>
+        `<tr>${cells
+          .map((c, column) => `<td>${renderCell(c, column === idColumn, workItemBaseUrl)}</td>`)
+          .join('')}</tr>`,
+    )
     .join('');
 
   // Wrapped so a wide result set scrolls inside the message instead of stretching the whole thread,
   // matching how message-item.html already frames the structured (deterministic-flow) tables.
   return `<div class="prose-table"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+}
+
+/** A work item id in the ID column becomes the same linked brass stamp used for structured tables and
+ * confirmations, so an id means the same thing and is clickable everywhere it appears. Anything that
+ * isn't a bare whole number is left alone - a title that happens to be numeric shouldn't turn into a
+ * broken link. The value is already HTML-escaped by the time it gets here, and the digits check means
+ * nothing but digits can reach the href. */
+function renderCell(cell: string, isIdColumn: boolean, workItemBaseUrl: string | null): string {
+  const id = cell.trim();
+  if (!isIdColumn || !workItemBaseUrl || !/^\d+$/.test(id)) {
+    return renderInline(cell);
+  }
+  return `<a class="stamp" href="${workItemBaseUrl}/${id}" target="_blank" rel="noopener">#${id}</a>`;
 }
 
 /** Splits "| a | b |" into ["a", "b"] - the leading/trailing pipes produce empty edge entries that
