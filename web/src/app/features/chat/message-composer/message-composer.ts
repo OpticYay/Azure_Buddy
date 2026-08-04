@@ -1,4 +1,4 @@
-import { Component, ElementRef, OnDestroy, ViewChild, computed, effect, inject, input, output, signal } from '@angular/core';
+import { Component, ElementRef, OnDestroy, ViewChild, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Observable, map, of, switchMap } from 'rxjs';
@@ -96,11 +96,21 @@ export class MessageComposer implements OnDestroy {
     // repeated clicks (there's nothing to navigate TO until a message is actually sent), so a plain
     // sessionId() dependency alone would never re-fire on the second, third, ... click. resetToken()
     // bumps on every click regardless of whether the id changed.
+    //
+    // The reset body runs inside untracked() because an effect subscribes to every signal it READS,
+    // not just the one it means to watch - and removeAttachment() reads attachedPreviewUrl (to revoke
+    // the object URL). That made this effect depend on attachedPreviewUrl, which setAttachedFile()
+    // writes: attaching or pasting a screenshot re-fired this very effect, which then cleared the
+    // attachment (and the typed caption) the instant it was added, so a screenshot could never be
+    // sent at all - send() found no file and fell through to sendText(). untracked() runs the same
+    // code without registering any of it as a dependency, leaving resetToken() as the sole trigger.
     effect(() => {
       this.newChatService.resetToken();
-      this.messageText.set('');
-      this.removeAttachment();
-      this.errorMessage.set(null);
+      untracked(() => {
+        this.messageText.set('');
+        this.removeAttachment();
+        this.errorMessage.set(null);
+      });
     });
   }
 
@@ -154,10 +164,17 @@ export class MessageComposer implements OnDestroy {
     // a reference to the underlying file data until explicitly revoked (or the page unloads). Not
     // revoking these in a long-lived chat session would leak memory a little more with every screenshot
     // attached/removed.
-    const existing = this.attachedPreviewUrl();
+    //
+    // Read untracked so this cleanup can never subscribe a caller (the reset effect above calls it)
+    // to the same signal it then clears - a read-then-write of one signal inside an effect is exactly
+    // the self-retriggering loop this method used to cause.
+    const existing = untracked(this.attachedPreviewUrl);
     if (existing) {
       URL.revokeObjectURL(existing);
     }
+    // Clear the signal too, not just the browser-side URL: leaving the revoked string in place left
+    // attachedPreviewUrl reporting a dead URL after every removeAttachment().
+    this.attachedPreviewUrl.set(null);
   }
 
   ngOnDestroy(): void {
@@ -268,10 +285,10 @@ export class MessageComposer implements OnDestroy {
     const activityKey = existingSessionId ?? DRAFT_SESSION_KEY;
     this.errorMessage.set(null);
 
-    // ChatsController's [Required] on the `content` form field rejects an empty string outright
-    // (confirmed against the real API: a screenshot-only send with no caption came back 400 "The
-    // content field is required.") - a screenshot attached with no typed caption needs SOME text sent,
-    // so we default to a placeholder rather than forcing the user to type something meaningless.
+    // A screenshot attached with no typed caption is a normal send, so it gets a placeholder rather
+    // than the user being made to type something meaningless. ChatsController applies the same default
+    // server-side (`content` is deliberately not [Required] there anymore, precisely so a caption-less
+    // screenshot isn't a 400) - this one just keeps the text the same whichever side supplies it.
     const content = this.messageText().trim() || 'Screenshot attached.';
 
     // Unlike sendText() above, POST /api/chats/{id}/messages has no "create the session if there isn't
