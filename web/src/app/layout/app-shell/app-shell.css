@@ -29,17 +29,10 @@
 }
 
 .brand__mark {
-  display: grid;
-  place-items: center;
   width: 24px;
   height: 24px;
-  border: 1px solid var(--brass);
-  border-radius: var(--r-sm);
-  color: var(--brass-lift);
-  font-family: var(--font-mono);
-  font-size: var(--t-micro);
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 
 .brand__name {
