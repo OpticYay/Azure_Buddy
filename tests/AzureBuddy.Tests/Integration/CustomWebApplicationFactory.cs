@@ -78,23 +78,37 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
     /// entrypoint (which SharedMySqlContainer's MYSQL_USER/MYSQL_DATABASE env vars feed into) only
     /// grants that user privileges on the ONE database named at container startup - it has no CREATE
     /// DATABASE privilege, so opening a connection with the app's own credentials and issuing CREATE
-    /// DATABASE fails with "Access denied". ExecScriptAsync runs a script inside the container via the
-    /// mysql CLI as root instead of over the network with the app's limited credentials, sidestepping
-    /// that without needing to construct/guess a root connection string ourselves.
+    /// DATABASE fails with "Access denied". Testcontainers.MySql's ExecScriptAsync looked like the
+    /// answer, but its source (Testcontainers.MySql.MySqlContainer.ExecScriptAsync) writes the app
+    /// user's own credentials into an in-container my.cnf and runs the mysql CLI against those - same
+    /// unprivileged user, same "Access denied" failure, just moved one layer down. What actually has
+    /// root's privileges is root itself: MySqlBuilder.WithPassword sets MYSQL_ROOT_PASSWORD to the SAME
+    /// value passed for the app user's password, so root's password is already sitting in the
+    /// connection string GetConnectionString() returns - no separate secret to construct or guess. We
+    /// exec the mysql CLI as -uroot with that password directly (via IContainer.ExecAsync, which runs
+    /// the argument list as-is with no shell in between - no bash quoting of the SQL's backtick
+    /// identifier quotes to worry about, unlike a `bash -lc "..."` wrapper).
     /// </summary>
     private static async Task<string> CreateIsolatedDatabaseAsync(MySqlContainer container, string databaseName)
     {
         var connectionStringBuilder = new MySqlConnectionStringBuilder(container.GetConnectionString());
 
-        // databaseName is always our own Guid-based name (never user input) and appUser comes from our
-        // own SharedMySqlContainer setup (not user input either), so string interpolation here isn't a
-        // SQL-injection concern - MySQL also doesn't support parameterizing identifiers like a database
+        // databaseName is always our own Guid-based name (never user input), appUser comes from our own
+        // SharedMySqlContainer setup (not user input either), and rootPassword is that same setup's
+        // password (see the method doc above) - so string interpolation into the SQL here isn't a
+        // SQL-injection concern. MySQL also doesn't support parameterizing identifiers like a database
         // or user name.
         var appUser = connectionStringBuilder.UserID;
-        await container.ExecScriptAsync(
-            $"CREATE DATABASE `{databaseName}`; " +
-            $"GRANT ALL PRIVILEGES ON `{databaseName}`.* TO '{appUser}'@'%';")
-            .ThrowOnFailure();
+        var rootPassword = connectionStringBuilder.Password;
+
+        await container.ExecAsync(new[]
+        {
+            "mysql",
+            "-uroot",
+            $"-p{rootPassword}",
+            "-e",
+            $"CREATE DATABASE `{databaseName}`; GRANT ALL PRIVILEGES ON `{databaseName}`.* TO '{appUser}'@'%';"
+        }).ThrowOnFailure();
 
         connectionStringBuilder.Database = databaseName;
         return connectionStringBuilder.ConnectionString;
