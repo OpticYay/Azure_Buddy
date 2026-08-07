@@ -1,0 +1,235 @@
+/* Same base pattern as llm-settings.css (page/card/field/actions/btn) - duplicated rather than
+   shared, matching how this codebase already keeps each feature's styles self-contained. */
+:host {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.page {
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: var(--space-2xl) var(--space-lg);
+}
+
+.page__head {
+  margin-bottom: var(--space-lg);
+  padding-left: var(--space-md);
+  border-left: 2px solid var(--brass);
+}
+
+h1 {
+  font-size: var(--t-display);
+  margin-bottom: var(--space-xs);
+}
+
+.page__sub {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--t-sm);
+}
+
+.state {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--ink-300);
+}
+
+.card {
+  padding: var(--space-lg);
+  margin-bottom: var(--space-md);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+}
+
+.card__title {
+  margin: 0 0 var(--space-md);
+  font-size: var(--t-lg, 1.1rem);
+}
+
+.card__foot {
+  margin-top: var(--space-sm);
+}
+
+.card--add-type {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.states-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-sm);
+}
+
+.states-table th {
+  text-align: left;
+  padding: var(--space-xs) var(--space-sm);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--ink-500, var(--ink-400));
+  border-bottom: 1px solid var(--rule-strong);
+}
+
+.states-table td {
+  padding: var(--space-sm);
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-800);
+}
+
+.states-table tr.is-disabled td {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.states-table tr.is-disabled td.col-enabled,
+.states-table tr.is-disabled td.col-actions {
+  text-decoration: none;
+}
+
+.col-order,
+.col-enabled {
+  width: 90px;
+}
+
+.col-actions {
+  width: 160px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.cell-input {
+  width: 100%;
+  padding: 6px var(--space-sm);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+}
+
+.cell-input--number {
+  width: 70px;
+}
+
+.cell-input:focus-visible {
+  outline: none;
+  border-color: var(--brass);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--brass-wash);
+}
+
+.add-type-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-md);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.field input {
+  padding: 9px var(--space-sm);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+}
+
+.alert {
+  margin: 0 0 var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--fail-wash);
+  border: 1px solid var(--fail-rule);
+  border-radius: var(--r-sm);
+  color: var(--fail);
+  font-size: var(--t-sm);
+}
+
+.footnote {
+  margin-top: var(--space-lg);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--brass-wash);
+  border: 1px solid var(--brass-rule);
+  border-radius: var(--r-sm);
+  color: var(--brass-deep);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 8px var(--space-md);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-700);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 500;
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+}
+
+.btn--sm {
+  padding: 5px var(--space-sm);
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--ink-400);
+  background: var(--surface-hover);
+}
+
+.btn--primary {
+  border-color: var(--ink-900);
+  background: var(--ink-900);
+  color: var(--surface);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--ink-700);
+  border-color: var(--ink-700);
+}
+
+.btn--danger {
+  color: var(--fail);
+  border-color: var(--fail-rule);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: var(--fail-wash);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+@media (max-width: 560px) {
+  .page {
+    padding: var(--space-lg) var(--space-md);
+  }
+
+  .col-order {
+    display: none;
+  }
+}

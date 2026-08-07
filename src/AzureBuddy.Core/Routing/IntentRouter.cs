@@ -22,6 +22,7 @@ public sealed class IntentRouter
     private readonly ViewBugsFlow _viewBugsFlow;
     private readonly UpdateItemFlow _updateItemFlow;
     private readonly MyItemsFlow _myItemsFlow;
+    private readonly GetPrioritizedWorkItemsFlow _getPrioritizedWorkItemsFlow;
     private readonly IConversationalAgent _agent;
     private readonly ChatHistoryStore _historyStore;
 
@@ -31,6 +32,7 @@ public sealed class IntentRouter
         ViewBugsFlow viewBugsFlow,
         UpdateItemFlow updateItemFlow,
         MyItemsFlow myItemsFlow,
+        GetPrioritizedWorkItemsFlow getPrioritizedWorkItemsFlow,
         IConversationalAgent agent,
         ChatHistoryStore historyStore)
     {
@@ -39,6 +41,7 @@ public sealed class IntentRouter
         _viewBugsFlow = viewBugsFlow;
         _updateItemFlow = updateItemFlow;
         _myItemsFlow = myItemsFlow;
+        _getPrioritizedWorkItemsFlow = getPrioritizedWorkItemsFlow;
         _agent = agent;
         _historyStore = historyStore;
     }
@@ -47,14 +50,22 @@ public sealed class IntentRouter
     {
         var extracted = await _intentExtractor.ExtractAsync(userMessage, cancellationToken);
 
-        var flowResult = extracted.Intent switch
-        {
-            ChatIntent.CreateBug => await _createBugFlow.ExecuteAsync(extracted, cancellationToken),
-            ChatIntent.ViewBugs => await _viewBugsFlow.ExecuteAsync(extracted, cancellationToken),
-            ChatIntent.UpdateItem => await _updateItemFlow.ExecuteAsync(extracted, cancellationToken),
-            ChatIntent.MyItems => await _myItemsFlow.ExecuteAsync(extracted, cancellationToken),
-            _ => FlowResult.FallThroughToAgent()
-        };
+        // Every deterministic flow below can only act on the single request `extracted.Intent`
+        // captures. A message that asks for more than one thing ("file a bug for X and show my open
+        // items") would otherwise silently answer one half and drop the other - so route those
+        // straight to the full conversational agent, which reasons over the whole raw message and can
+        // make multiple tool calls in one turn.
+        var flowResult = extracted.HasAdditionalRequest
+            ? FlowResult.FallThroughToAgent()
+            : extracted.Intent switch
+            {
+                ChatIntent.CreateBug => await _createBugFlow.ExecuteAsync(extracted, cancellationToken),
+                ChatIntent.ViewBugs => await _viewBugsFlow.ExecuteAsync(extracted, cancellationToken),
+                ChatIntent.UpdateItem => await _updateItemFlow.ExecuteAsync(extracted, cancellationToken),
+                ChatIntent.MyItems => await _myItemsFlow.ExecuteAsync(extracted, cancellationToken),
+                ChatIntent.PrioritizeWorkItems => await _getPrioritizedWorkItemsFlow.ExecuteAsync(extracted, cancellationToken),
+                _ => FlowResult.FallThroughToAgent()
+            };
 
         if (flowResult.Handled)
         {

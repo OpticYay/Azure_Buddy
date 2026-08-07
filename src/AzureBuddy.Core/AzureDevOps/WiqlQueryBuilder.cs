@@ -58,10 +58,13 @@ public static class WiqlQueryBuilder
         $"FROM WorkItems WHERE {ProjectScope} AND [System.Parent] = {parentId} ORDER BY [System.CreatedDate] DESC";
 
     /// <summary>Work items assigned to the PAT owner, optionally filtered to one state (otherwise
-    /// everything not Closed).</summary>
-    public static string AssignedToMe(string? state) =>
+    /// everything not Closed) and/or one work item type (otherwise every type) - e.g. "bugs assigned
+    /// to me" needs the type filter or it returns every item regardless of type, which is what silently
+    /// happened before this parameter existed.</summary>
+    public static string AssignedToMe(string? state, string? workItemType = null) =>
         $"SELECT [System.Id], [System.Title], [System.WorkItemType], [System.State] FROM WorkItems " +
-        $"WHERE {ProjectScope} AND [System.AssignedTo] = @Me {StateFilter(state)} ORDER BY [System.ChangedDate] DESC";
+        $"WHERE {ProjectScope} AND [System.AssignedTo] = @Me {StateFilter(state)} {WorkItemTypeFilter(workItemType)} " +
+        $"ORDER BY [System.ChangedDate] DESC";
 
     // "open" is how people ask for "not finished yet" in plain English, but it isn't an actual ADO
     // state on any standard process template (states are things like New/Active/Resolved/Closed) - so
@@ -71,6 +74,9 @@ public static class WiqlQueryBuilder
         string.IsNullOrEmpty(state) || state.Trim().Equals("open", StringComparison.OrdinalIgnoreCase)
             ? "AND [System.State] <> 'Closed'"
             : $"AND [System.State] = '{Escape(state)}'";
+
+    private static string WorkItemTypeFilter(string? workItemType) =>
+        string.IsNullOrEmpty(workItemType) ? string.Empty : $"AND [System.WorkItemType] = '{Escape(workItemType)}'";
 
     /// <summary>Doubles single quotes so a user-supplied value can't break out of a WIQL string
     /// literal - WIQL's equivalent of parameterizing a SQL query (WIQL itself has no parameter syntax).</summary>

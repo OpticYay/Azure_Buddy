@@ -13,6 +13,7 @@ public static class RoutingServiceCollectionExtensions
         services.AddScoped<ViewBugsFlow>();
         services.AddScoped<UpdateItemFlow>();
         services.AddScoped<MyItemsFlow>();
+        services.AddScoped<GetPrioritizedWorkItemsFlow>();
         services.AddScoped<IntentRouter>();
         return services;
     }

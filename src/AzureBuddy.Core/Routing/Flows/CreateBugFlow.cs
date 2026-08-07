@@ -13,6 +13,10 @@ namespace AzureBuddy.Core.Routing.Flows;
 /// </summary>
 public sealed class CreateBugFlow
 {
+    /// <summary>Priority applied when the message signals urgency but the user never named a Priority
+    /// field explicitly. "1" matches ADO's own convention of 1 = highest priority.</summary>
+    private const string DefaultUrgentPriority = "1";
+
     private readonly IAdoClient _adoClient;
     private readonly AdoConnectionContextAccessor _connectionAccessor;
     private readonly ILogger<CreateBugFlow> _logger;
@@ -96,8 +100,15 @@ public sealed class CreateBugFlow
             return FlowResult.DoneWithError("I couldn't create the bug automatically - Azure DevOps did not return a valid id.");
         }
 
+        // The user's own wording signaled urgency ("production down", "urgent", ...) but didn't state
+        // an explicit Priority - default it to the highest priority so the bug doesn't quietly land at
+        // whatever ADO's own default is, and say so, since this value was inferred rather than given.
+        var urgencyNote = extracted.IsUrgent && string.IsNullOrEmpty(extracted.Priority)
+            ? $" Flagged as urgent from your message, so I set Priority to {DefaultUrgentPriority}."
+            : string.Empty;
+
         return FlowResult.DoneWithConfirmation(
-            $"Bug #{workItem.Id} created and linked to Parent #{parentId}.\nTitle: [Bug] - {extracted.Title}",
+            $"Bug #{workItem.Id} created and linked to Parent #{parentId}.\nTitle: [Bug] - {extracted.Title}{urgencyNote}",
             workItem.Id);
     }
 
@@ -113,7 +124,10 @@ public sealed class CreateBugFlow
             AdoRelationOps.ParentLink($"{connection.OrganizationUrl.TrimEnd('/')}/{connection.Project}/_apis/wit/workItems/{parentId}")
         };
 
-        if (!string.IsNullOrEmpty(extracted.Priority)) ops.Add(JsonPatchOperation.Add($"/fields/{AdoFields.Priority}", extracted.Priority));
+        var priority = !string.IsNullOrEmpty(extracted.Priority)
+            ? extracted.Priority
+            : extracted.IsUrgent ? DefaultUrgentPriority : string.Empty;
+        if (!string.IsNullOrEmpty(priority)) ops.Add(JsonPatchOperation.Add($"/fields/{AdoFields.Priority}", priority));
         if (!string.IsNullOrEmpty(extracted.Severity)) ops.Add(JsonPatchOperation.Add($"/fields/{AdoFields.Severity}", extracted.Severity));
         if (!string.IsNullOrEmpty(extracted.AreaPath)) ops.Add(JsonPatchOperation.Add($"/fields/{AdoFields.AreaPath}", extracted.AreaPath));
         if (!string.IsNullOrEmpty(extracted.IterationPath)) ops.Add(JsonPatchOperation.Add($"/fields/{AdoFields.IterationPath}", extracted.IterationPath));

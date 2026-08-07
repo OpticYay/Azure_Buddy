@@ -105,6 +105,34 @@ public class WiqlQueryBuilderTests
         Assert.Contains("[System.State] <> 'Closed'", query);
     }
 
+    [Fact]
+    public void AssignedToMe_NoWorkItemType_ReturnsEveryType()
+    {
+        // Regression: "get me all the bugs assigned to me" was returning every type, not just Bugs,
+        // because this filter didn't exist - the omitted-type case must still produce a valid query
+        // with no type clause at all (not an empty/broken one).
+        var query = WiqlQueryBuilder.AssignedToMe(null);
+
+        Assert.DoesNotContain("[System.WorkItemType] =", query);
+    }
+
+    [Fact]
+    public void AssignedToMe_WithWorkItemType_FiltersToThatTypeExactly()
+    {
+        var query = WiqlQueryBuilder.AssignedToMe(null, "Bug");
+
+        Assert.Contains("[System.WorkItemType] = 'Bug'", query);
+    }
+
+    [Fact]
+    public void AssignedToMe_StateAndWorkItemTypeTogether_FiltersOnBoth()
+    {
+        var query = WiqlQueryBuilder.AssignedToMe("Active", "Task");
+
+        Assert.Contains("[System.State] = 'Active'", query);
+        Assert.Contains("[System.WorkItemType] = 'Task'", query);
+    }
+
     [Theory]
     [InlineData("open")]
     [InlineData("Open")]

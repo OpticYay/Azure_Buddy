@@ -20,6 +20,7 @@ public sealed class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<LlmSettings> LlmSettings => Set<LlmSettings>();
+    public DbSet<WorkItemStateConfiguration> WorkItemStateConfigurations => Set<WorkItemStateConfiguration>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -78,5 +79,18 @@ public sealed class AppDbContext : IdentityDbContext<ApplicationUser>
         // dominant query pattern against this table.
         builder.Entity<RefreshToken>()
             .HasIndex(t => t.TokenHash);
+
+        // A state name can only appear once per work item type - this is what makes the admin
+        // "add a state" form fail cleanly instead of silently creating a confusing duplicate row.
+        builder.Entity<WorkItemStateConfiguration>()
+            .HasIndex(s => new { s.WorkItemType, s.StateName })
+            .IsUnique();
+
+        // The read path every update-state validation takes (UpdateItemFlow, AdoWorkItemToolset) -
+        // "give me the enabled states for this one work item type, in display order" - so an index
+        // on WorkItemType alone (the DisplayOrder sort is cheap once the type is narrowed) keeps that
+        // lookup fast even as the table grows across many types.
+        builder.Entity<WorkItemStateConfiguration>()
+            .HasIndex(s => s.WorkItemType);
     }
 }
