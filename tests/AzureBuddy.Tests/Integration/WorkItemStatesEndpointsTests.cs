@@ -47,17 +47,21 @@ public class WorkItemStatesEndpointsTests : IntegrationTestBase
     [Fact]
     public async Task PublicGet_AsRegularAuthenticatedUser_Succeeds()
     {
+        // "Verified" (not "Active" - already seeded for "Bug", see AdminCreate_ThenPublicGet's comment
+        // above) so the create below actually has to succeed for this assertion to pass, rather than
+        // being trivially satisfied by pre-existing seed data regardless of whether it did.
         using var admin = await CreateAuthenticatedAdminClientAsync();
-        await admin.PostAsJsonAsync(
+        var createResponse = await admin.PostAsJsonAsync(
             "/api/admin/work-item-states",
-            new CreateWorkItemStateRequest { WorkItemType = "Bug", StateName = "Active", DisplayOrder = 0, IsEnabled = true });
+            new CreateWorkItemStateRequest { WorkItemType = "Bug", StateName = "Verified", DisplayOrder = 0, IsEnabled = true });
+        Assert.Equal(HttpStatusCode.OK, createResponse.StatusCode);
 
         using var regularUser = await CreateAuthenticatedClientAsync();
         var response = await regularUser.GetAsync("/api/work-item-states/Bug");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var states = await response.Content.ReadFromJsonAsync<List<string>>();
-        Assert.Contains("Active", states!);
+        Assert.Contains("Verified", states!);
     }
 
     [Fact]
@@ -74,13 +78,20 @@ public class WorkItemStatesEndpointsTests : IntegrationTestBase
     [Fact]
     public async Task AdminCreate_ThenPublicGet_ReturnsItOrderedByDisplayOrder()
     {
+        // "Task"/"To Do" (DisplayOrder 0), "In Progress" (1), and "Done" (2) are already seeded by the
+        // AddWorkItemStateConfigurations migration, which now actually runs against the real MySQL
+        // database this test suite uses - previously, under EF Core's InMemory provider, migrations
+        // never ran at all, so this test never collided with seed data. "Blocked"/"Review" aren't part
+        // of that seeded set, and their DisplayOrder values (10/11) are chosen clear of the seeded
+        // 0-2 range so the expected order doesn't depend on how ties within the same DisplayOrder are
+        // broken.
         using var admin = await CreateAuthenticatedAdminClientAsync();
-        await admin.PostAsJsonAsync("/api/admin/work-item-states", new CreateWorkItemStateRequest { WorkItemType = "Task", StateName = "Done", DisplayOrder = 1, IsEnabled = true });
-        await admin.PostAsJsonAsync("/api/admin/work-item-states", new CreateWorkItemStateRequest { WorkItemType = "Task", StateName = "To Do", DisplayOrder = 0, IsEnabled = true });
+        await admin.PostAsJsonAsync("/api/admin/work-item-states", new CreateWorkItemStateRequest { WorkItemType = "Task", StateName = "Review", DisplayOrder = 11, IsEnabled = true });
+        await admin.PostAsJsonAsync("/api/admin/work-item-states", new CreateWorkItemStateRequest { WorkItemType = "Task", StateName = "Blocked", DisplayOrder = 10, IsEnabled = true });
 
         var states = await admin.GetFromJsonAsync<List<string>>("/api/work-item-states/Task");
 
-        Assert.Equal(new[] { "To Do", "Done" }, states);
+        Assert.Equal(new[] { "To Do", "In Progress", "Done", "Blocked", "Review" }, states);
     }
 
     [Fact]
@@ -142,9 +153,14 @@ public class WorkItemStatesEndpointsTests : IntegrationTestBase
     [Fact]
     public async Task AdminGet_GroupsMultipleTypesSeparately()
     {
+        // "Triaged" (not "New" - already seeded for "Bug") so this create actually has to succeed;
+        // the "Bug" assertion below would otherwise pass regardless, since "Bug" already has seeded
+        // states with or without this POST succeeding.
         using var admin = await CreateAuthenticatedAdminClientAsync();
-        await admin.PostAsJsonAsync("/api/admin/work-item-states", new CreateWorkItemStateRequest { WorkItemType = "Bug", StateName = "New", DisplayOrder = 0, IsEnabled = true });
-        await admin.PostAsJsonAsync("/api/admin/work-item-states", new CreateWorkItemStateRequest { WorkItemType = "Feature", StateName = "Planned", DisplayOrder = 0, IsEnabled = true });
+        var bugResponse = await admin.PostAsJsonAsync("/api/admin/work-item-states", new CreateWorkItemStateRequest { WorkItemType = "Bug", StateName = "Triaged", DisplayOrder = 0, IsEnabled = true });
+        Assert.Equal(HttpStatusCode.OK, bugResponse.StatusCode);
+        var featureResponse = await admin.PostAsJsonAsync("/api/admin/work-item-states", new CreateWorkItemStateRequest { WorkItemType = "Feature", StateName = "Planned", DisplayOrder = 0, IsEnabled = true });
+        Assert.Equal(HttpStatusCode.OK, featureResponse.StatusCode);
 
         var groups = await admin.GetFromJsonAsync<List<WorkItemTypeStatesView>>("/api/admin/work-item-states");
 

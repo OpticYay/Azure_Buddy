@@ -60,7 +60,12 @@ public class LlmSettingsEndpointsTests : IntegrationTestBase
         // this suite - a PUT from any other test in this class would leave a saved row behind and
         // make this assertion order-dependent against the shared class-level Factory/DB. A dedicated,
         // fresh factory+DB sidesteps that instead of relying on test execution order within the class.
+        // xUnit only calls IAsyncLifetime.InitializeAsync() automatically for factories it manages via
+        // IClassFixture<T> - a manually-constructed instance like this one needs an explicit call, or
+        // its database is never created/migrated (ConfigureWebHost would register AppDbContext with an
+        // empty connection string instead).
         await using var isolatedFactory = new CustomWebApplicationFactory();
+        await isolatedFactory.InitializeAsync();
         using var client = await CreateAuthenticatedAdminClientOnAsync(isolatedFactory);
 
         var view = await client.GetFromJsonAsync<LlmSettingsView>("/api/admin/llm");
