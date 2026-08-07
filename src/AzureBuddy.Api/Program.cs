@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using AzureBuddy.Api;
+using AzureBuddy.Core.Account;
 using AzureBuddy.Core.Agent;
 using AzureBuddy.Core.Auth;
 using AzureBuddy.Core.AzureDevOps;
@@ -10,6 +11,7 @@ using AzureBuddy.Core.Common;
 using AzureBuddy.Core.Llm;
 using AzureBuddy.Core.Routing;
 using AzureBuddy.Core.Settings;
+using AzureBuddy.Core.WorkItemStates;
 using AzureBuddy.Data;
 using AzureBuddy.Data.Entities;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -221,9 +223,11 @@ builder.Services.AddDataProtection()
 
 builder.Services.AddLlmProviders(builder.Configuration);
 builder.Services.AddAzureDevOps(builder.Configuration);
+builder.Services.AddWorkItemStates();
 builder.Services.AddChatRouting();
 builder.Services.AddAzureBuddyAgent();
 builder.Services.AddAzureBuddyAuth(builder.Configuration);
+builder.Services.AddAzureBuddyAccount();
 builder.Services.AddAdoSettings();
 builder.Services.AddChatHistory();
 

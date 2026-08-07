@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # AzureBuddy.slnx is the new XML solution format, which needs an SDK new enough to parse it
+      # even though every project inside still targets net8.0 - 10.0.x is what's used locally.
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore AzureBuddy.slnx
+
+      - name: Build
+        run: dotnet build AzureBuddy.slnx --no-restore --configuration Release
+
+      # The test suite swaps AppDbContext to EF Core's InMemory provider and IAdoClient to a fake
+      # (see CustomWebApplicationFactory) specifically so it never needs a live MySQL server or a real
+      # Azure DevOps org - no service containers or secrets required to run this job.
+      - name: Test
+        run: dotnet test AzureBuddy.slnx --no-build --configuration Release --logger "console;verbosity=normal"
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # `ng test` (Karma/Chrome) isn't wired into this job - there's no karma.conf.js/CI browser launcher
+      # configured yet and only the CLI-generated app.spec.ts exists today. Add a headless-Chrome step
+      # here once there's meaningful component test coverage worth running on every push.

@@ -28,6 +28,27 @@ export const routes: Routes = [
     canActivate: [redirectIfAuthenticatedGuard],
   },
   {
+    path: 'forgot-password',
+    loadComponent: () =>
+      import('./features/auth/forgot-password/forgot-password').then((m) => m.ForgotPassword),
+    canActivate: [redirectIfAuthenticatedGuard],
+  },
+  {
+    // No redirectIfAuthenticatedGuard here (unlike login/register/forgot-password): a reset link can
+    // land on this page from a device/tab that's still logged in (e.g. the same browser the user
+    // requested the reset from) - the reset itself doesn't require being logged out, so it shouldn't
+    // be blocked either way.
+    path: 'reset-password',
+    loadComponent: () =>
+      import('./features/auth/reset-password/reset-password').then((m) => m.ResetPassword),
+  },
+  {
+    // Same reasoning as reset-password - a user who registered and is already logged in should still
+    // be able to open their confirmation link and have it work.
+    path: 'confirm-email',
+    loadComponent: () => import('./features/auth/confirm-email/confirm-email').then((m) => m.ConfirmEmail),
+  },
+  {
     // A route with no `component`, only `children`, is a "layout route": AppShell renders a shared
     // frame (top nav, logout button) with its own <router-outlet> inside, and whichever child route
     // matched (chat, or settings/ado) renders inside THAT inner outlet. This is how "every protected
@@ -60,6 +81,12 @@ export const routes: Routes = [
         path: 'admin/llm',
         loadComponent: () =>
           import('./features/admin/llm-settings/llm-settings').then((m) => m.LlmSettings),
+        canActivate: [adminGuard],
+      },
+      {
+        path: 'admin/work-item-states',
+        loadComponent: () =>
+          import('./features/admin/work-item-states/work-item-states').then((m) => m.WorkItemStates),
         canActivate: [adminGuard],
       },
       { path: '', pathMatch: 'full', redirectTo: 'chat' },
