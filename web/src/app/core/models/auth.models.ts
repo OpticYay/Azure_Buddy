@@ -31,3 +31,22 @@ export interface AuthTokens {
 
 // What the backend sends back on a failed register/login/refresh (400/401) is now the shared
 // ApiErrorResponse shape (see api-error.model.ts) - previously its own one-off {errors: string[]}.
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ResetPasswordRequest {
+  email: string;
+  token: string;
+  newPassword: string;
+}
+
+export interface ConfirmEmailRequest {
+  email: string;
+  token: string;
+}
+
+export interface ResendConfirmationRequest {
+  email: string;
+}

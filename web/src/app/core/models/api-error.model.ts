@@ -27,3 +27,19 @@ export function extractApiErrorMessage(errorBody: unknown, fallback: string): st
   const messages = body?.errors?.map((e) => e.message).filter(Boolean);
   return messages && messages.length > 0 ? messages.join(' ') : fallback;
 }
+
+/** Companion to extractApiErrorMessage for forms that want a field-specific error shown next to the
+ * relevant input (e.g. change-password's "wrong current password" belonging on that one field) instead
+ * of - or in addition to - a generic banner. Errors with no `field` set are simply absent from the
+ * returned map; callers typically still call extractApiErrorMessage too for a fallback banner covering
+ * those. */
+export function extractFieldErrors(errorBody: unknown): Record<string, string> {
+  const body = errorBody as Partial<ApiErrorResponse> | undefined;
+  const result: Record<string, string> = {};
+  for (const error of body?.errors ?? []) {
+    if (error.field) {
+      result[error.field] = error.message;
+    }
+  }
+  return result;
+}

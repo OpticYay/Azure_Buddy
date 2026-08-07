@@ -44,6 +44,12 @@ public sealed class AdoClient : IAdoClient
 
     public async Task<IReadOnlyList<int>> QueryWiqlAsync(AdoConnectionContext connection, string wiqlQuery, CancellationToken cancellationToken = default)
     {
+        // The exact WIQL text is the single most useful thing to see when a query returns nothing or
+        // 400s - the string is assembled from user-supplied fragments (search terms, states, ids), so
+        // "what did we actually ask ADO" is not obvious from the call site. Debug rather than
+        // Information because this fires on every ADO-backed turn. No secrets are in the query text.
+        _logger.LogDebug("WIQL query against {Org}/{Project}: {Wiql}", connection.OrganizationUrl, connection.Project, wiqlQuery);
+
         var url = BuildUrl(connection, Paths.Wiql);
         var response = await SendAsync(connection, () => new HttpRequestMessage(HttpMethod.Post, url)
         {
@@ -51,7 +57,9 @@ public sealed class AdoClient : IAdoClient
         }, cancellationToken);
 
         var result = await ReadOrThrowAsync<WiqlQueryResponse>(response, cancellationToken);
-        return result.WorkItems.Select(w => w.Id).ToList();
+        var ids = result.WorkItems.Select(w => w.Id).ToList();
+        _logger.LogDebug("WIQL query returned {Count} work item(s).", ids.Count);
+        return ids;
     }
 
     public async Task<IReadOnlyList<WorkItem>> GetWorkItemsAsync(

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.RegularExpressions;
 using AzureBuddy.Core.Auth;
 using Xunit;
 
@@ -147,5 +148,177 @@ public class AuthEndpointsTests : IntegrationTestBase
         var response = await client.GetAsync("/api/chats");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Register_SendsConfirmationEmail()
+    {
+        var email = $"confirm-{Guid.NewGuid():N}@example.com";
+        await RegisterAsync(email);
+
+        var sent = Assert.Single(Factory.EmailSender.SentEmails);
+        Assert.Equal(email, sent.ToEmail);
+        Assert.Contains("confirm-email", sent.Body);
+    }
+
+    [Fact]
+    public async Task ForgotPassword_KnownEmail_SendsResetLinkAndAlwaysReturnsNoContent()
+    {
+        var email = $"forgot-{Guid.NewGuid():N}@example.com";
+        await RegisterAsync(email);
+        Factory.EmailSender.Reset(); // clear the registration-confirmation email so only the reset one remains
+
+        var response = await Client.PostAsJsonAsync("/api/auth/forgot-password", new ForgotPasswordRequest(email));
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var sent = Assert.Single(Factory.EmailSender.SentEmails);
+        Assert.Equal(email, sent.ToEmail);
+        Assert.Contains("reset-password", sent.Body);
+    }
+
+    [Fact]
+    public async Task ForgotPassword_UnknownEmail_StillReturnsNoContentAndSendsNothing()
+    {
+        // Non-enumeration: identical response whether or not the account exists.
+        var response = await Client.PostAsJsonAsync(
+            "/api/auth/forgot-password", new ForgotPasswordRequest($"nobody-{Guid.NewGuid():N}@example.com"));
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Empty(Factory.EmailSender.SentEmails);
+    }
+
+    [Fact]
+    public async Task ResetPassword_ValidToken_ChangesPasswordAndReturnsTokens()
+    {
+        var email = $"reset-{Guid.NewGuid():N}@example.com";
+        await RegisterAsync(email, "OldPassw0rd!");
+        await Client.PostAsJsonAsync("/api/auth/forgot-password", new ForgotPasswordRequest(email));
+        var (linkEmail, token) = ExtractEmailAndTokenFromLink(Factory.EmailSender.SentEmails.Last().Body);
+
+        var resetResponse = await Client.PostAsJsonAsync(
+            "/api/auth/reset-password", new ResetPasswordRequest(linkEmail, token, "BrandNewPassw0rd!"));
+
+        Assert.Equal(HttpStatusCode.OK, resetResponse.StatusCode);
+        var tokens = await resetResponse.Content.ReadFromJsonAsync<AuthTokens>();
+        Assert.NotNull(tokens);
+
+        // The old password no longer works; the new one does.
+        var loginWithOld = await Client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, "OldPassw0rd!"));
+        Assert.Equal(HttpStatusCode.Unauthorized, loginWithOld.StatusCode);
+
+        var loginWithNew = await Client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, "BrandNewPassw0rd!"));
+        Assert.Equal(HttpStatusCode.OK, loginWithNew.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResetPassword_TokenAlreadyUsedOnce_SecondUseFails()
+    {
+        var email = $"reset-reuse-{Guid.NewGuid():N}@example.com";
+        await RegisterAsync(email, "OldPassw0rd!");
+        await Client.PostAsJsonAsync("/api/auth/forgot-password", new ForgotPasswordRequest(email));
+        var (linkEmail, token) = ExtractEmailAndTokenFromLink(Factory.EmailSender.SentEmails.Last().Body);
+
+        var first = await Client.PostAsJsonAsync("/api/auth/reset-password", new ResetPasswordRequest(linkEmail, token, "FirstNewPassw0rd!"));
+        first.EnsureSuccessStatusCode();
+
+        var second = await Client.PostAsJsonAsync("/api/auth/reset-password", new ResetPasswordRequest(linkEmail, token, "SecondNewPassw0rd!"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResetPassword_GarbageToken_ReturnsBadRequestNotServerError()
+    {
+        var email = $"reset-garbage-{Guid.NewGuid():N}@example.com";
+        await RegisterAsync(email);
+
+        var response = await Client.PostAsJsonAsync(
+            "/api/auth/reset-password", new ResetPasswordRequest(email, "not-a-real-token", "SomeNewPassw0rd!"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResetPassword_UnknownEmail_ReturnsBadRequestSameAsInvalidToken()
+    {
+        var response = await Client.PostAsJsonAsync(
+            "/api/auth/reset-password",
+            new ResetPasswordRequest($"nobody-{Guid.NewGuid():N}@example.com", "irrelevant-token", "SomeNewPassw0rd!"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ConfirmEmail_ValidToken_ConfirmsAndReturnsTokens()
+    {
+        var email = $"confirmflow-{Guid.NewGuid():N}@example.com";
+        await RegisterAsync(email);
+        var (linkEmail, token) = ExtractEmailAndTokenFromLink(Factory.EmailSender.SentEmails.Single().Body);
+
+        var response = await Client.PostAsJsonAsync("/api/auth/confirm-email", new ConfirmEmailRequest(linkEmail, token));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var tokens = await response.Content.ReadFromJsonAsync<AuthTokens>();
+        Assert.NotNull(tokens);
+    }
+
+    [Fact]
+    public async Task ConfirmEmail_GarbageToken_ReturnsBadRequest()
+    {
+        var email = $"confirmbad-{Guid.NewGuid():N}@example.com";
+        await RegisterAsync(email);
+
+        var response = await Client.PostAsJsonAsync("/api/auth/confirm-email", new ConfirmEmailRequest(email, "not-a-real-token"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResendConfirmation_UnknownEmail_StillReturnsNoContentAndSendsNothing()
+    {
+        var response = await Client.PostAsJsonAsync(
+            "/api/auth/resend-confirmation", new ResendConfirmationRequest($"nobody-{Guid.NewGuid():N}@example.com"));
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Empty(Factory.EmailSender.SentEmails);
+    }
+
+    [Fact]
+    public async Task ResendConfirmation_AlreadyConfirmed_SendsNothing()
+    {
+        var email = $"resend-confirmed-{Guid.NewGuid():N}@example.com";
+        await RegisterAsync(email);
+        var (linkEmail, token) = ExtractEmailAndTokenFromLink(Factory.EmailSender.SentEmails.Single().Body);
+        await Client.PostAsJsonAsync("/api/auth/confirm-email", new ConfirmEmailRequest(linkEmail, token));
+        Factory.EmailSender.Reset();
+
+        var response = await Client.PostAsJsonAsync("/api/auth/resend-confirmation", new ResendConfirmationRequest(email));
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Empty(Factory.EmailSender.SentEmails);
+    }
+
+    [Fact]
+    public async Task ResendConfirmation_UnconfirmedEmail_SendsANewConfirmationLink()
+    {
+        var email = $"resend-unconfirmed-{Guid.NewGuid():N}@example.com";
+        await RegisterAsync(email);
+        Factory.EmailSender.Reset();
+
+        var response = await Client.PostAsJsonAsync("/api/auth/resend-confirmation", new ResendConfirmationRequest(email));
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var sent = Assert.Single(Factory.EmailSender.SentEmails);
+        Assert.Contains("confirm-email", sent.Body);
+    }
+
+    /// <summary>Pulls email/token straight out of the link AuthService.BuildLink embeds in the email
+    /// body (e.g. ".../reset-password?email=x%40y.com&amp;token=abc123") - mirrors what the frontend's
+    /// reset-password/confirm-email pages do by reading their own route's query params.</summary>
+    private static (string Email, string Token) ExtractEmailAndTokenFromLink(string emailBody)
+    {
+        var match = Regex.Match(emailBody, @"[?&]email=(?<email>[^&\s]+)&token=(?<token>[^&\s]+)");
+        Assert.True(match.Success, $"Could not find an email/token link in body: {emailBody}");
+        return (Uri.UnescapeDataString(match.Groups["email"].Value), Uri.UnescapeDataString(match.Groups["token"].Value));
     }
 }

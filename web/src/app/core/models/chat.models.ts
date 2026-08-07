@@ -59,6 +59,10 @@ export interface CreateSessionRequest {
   title: string | null;
 }
 
+export interface RenameSessionRequest {
+  title: string;
+}
+
 /** Response shape of POST /api/chats/{id}/messages *when a screenshot was attached* - the endpoint
  * returns a bare ChatMessageView when there's no screenshot, but this richer shape when there is
  * (see ChatsController.AppendMessageAsync and AppendMessageResult on the backend). */

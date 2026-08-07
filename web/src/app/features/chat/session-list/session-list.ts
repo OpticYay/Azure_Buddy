@@ -1,8 +1,10 @@
-import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, ElementRef, OnInit, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 
 import { ChatService } from '../../../core/services/chat.service';
+import { NewChatService } from '../../../core/services/new-chat.service';
 import { ChatSessionSummary } from '../../../core/models/chat.models';
 import { listStagger, sidebarWidth } from '../../../shared/animations';
 
@@ -19,19 +21,19 @@ const NARROW_SCREEN = '(max-width: 720px)';
 // Like everything else here it must be explicitly imported since components are standalone.
 @Component({
   selector: 'app-session-list',
-  imports: [RouterLink, RouterLinkActive, DatePipe],
+  imports: [RouterLink, RouterLinkActive, DatePipe, FormsModule],
   templateUrl: './session-list.html',
   styleUrl: './session-list.css',
   animations: [sidebarWidth, listStagger],
 })
 export class SessionList implements OnInit {
   private readonly chatService = inject(ChatService);
+  private readonly newChatService = inject(NewChatService);
   private readonly router = inject(Router);
 
   readonly sessions = signal<ChatSessionSummary[]>([]);
   readonly loading = signal(true);
   readonly loadError = signal<string | null>(null);
-  readonly creatingNew = signal(false);
 
   // ── Collapsed state: one source of truth ──────────────────────────────────────────────────────
   // Read synchronously at construction so the rail renders in its remembered state on the very
@@ -58,6 +60,18 @@ export class SessionList implements OnInit {
     // DestroyRef is Angular's hook for "run this when the component is torn down" - without removing
     // the listener, every visit to this route would leave another one attached to matchMedia.
     inject(DestroyRef).onDestroy(() => query.removeEventListener('change', onChange));
+
+    // A draft conversation (started via newChat() below) turned into a real, persisted session the
+    // moment its first message was sent - MessageThread learns this from its own GET and reports it
+    // here (see new-chat.service.ts) rather than this component polling or refetching the whole list.
+    // Filtering out an id already present guards against the signal firing twice for the same session
+    // (e.g. StrictMode-style re-runs) producing a duplicate row.
+    effect(() => {
+      const created = this.newChatService.created();
+      if (created) {
+        this.sessions.update((existing) => [created, ...existing.filter((s) => s.id !== created.id)]);
+      }
+    });
   }
 
   // Pagination state: how many pages we've loaded so far, and whether the server has more beyond
@@ -67,6 +81,22 @@ export class SessionList implements OnInit {
   private currentPage = 0;
   readonly hasMore = signal(false);
   readonly loadingMore = signal(false);
+
+  /** Which session (by id) is currently showing its title as an editable field instead of a link -
+   * null when nothing is being renamed. A signal (not a plain field) for the same zoneless reason as
+   * message-composer's messageText: the rename input's value is written programmatically (seeded from
+   * the session's current title) when editing starts, not typed fresh, so a plain field write
+   * wouldn't reliably reach the DOM. */
+  readonly renamingId = signal<string | null>(null);
+  readonly renameText = signal('');
+
+  /** The renaming row is rendered as a plain <div> rather than the routerLink <a> (see the template
+   * comment for why), and routerLinkActive only decorates the anchor - so the "this is the open
+   * conversation" highlight would drop off the row for as long as you were editing it. Captured once
+   * when renaming starts and applied manually, so the row doesn't visibly change colour mid-edit. */
+  readonly renamingRowWasActive = signal(false);
+
+  @ViewChild('renameField') private renameFieldRef?: ElementRef<HTMLInputElement>;
 
   ngOnInit(): void {
     this.loadNextPage(true);
@@ -111,24 +141,69 @@ export class SessionList implements OnInit {
     this.loadNextPage(false);
   }
 
+  /** Used to call POST /api/chats immediately, persisting a real (empty) session before the user had
+   * typed a single word - every click left a permanent, untitled row in the sidebar whether or not the
+   * user ever sent anything. A session is a record that a conversation actually happened; there's
+   * nothing to persist yet at the moment this button is clicked.
+   *
+   * So this is now purely local and synchronous: no backend call, no id, nothing added to `sessions`.
+   * It navigates to the bare /chat route (ChatPage/MessageThread's "draft" state - see those files) and
+   * tells that draft to reset via requestNewChat(), which is what makes a second click still clear a
+   * typed-but-unsent draft even though the URL doesn't change the second time (there's nowhere further
+   * to navigate to until a message is actually sent). The session only gets created - and only then
+   * appears here, via the `created` effect in the constructor above - once that happens. */
   newChat(): void {
-    this.creatingNew.set(true);
-    this.chatService.createSession(null).subscribe({
-      next: (session) => {
-        this.creatingNew.set(false);
-        // Add the new session to the top of the list immediately, so the sidebar reflects it without
-        // waiting for a full reload - a small but common pattern: update local state optimistically
-        // from a response you already have, instead of re-fetching the whole list just to see one change.
-        this.sessions.update((existing) => [
-          { id: session.id, title: session.title, createdAt: session.createdAt, updatedAt: session.updatedAt },
-          ...existing,
-        ]);
-        this.router.navigate(['/chat', session.id]);
+    this.newChatService.requestNewChat();
+    this.router.navigateByUrl('/chat');
+  }
+
+  /** Opens the inline rename field for one row, seeded with its current title - not the empty string,
+   * since renaming is an edit, not "type a new title from scratch." */
+  startRename(session: ChatSessionSummary, event: Event): void {
+    event.stopPropagation();
+    event.preventDefault();
+    this.renamingRowWasActive.set(this.router.url.includes(session.id));
+    this.renamingId.set(session.id);
+    this.renameText.set(session.title);
+
+    // Same reasoning as message-composer's prefill(): the input doesn't exist in the DOM yet on the
+    // same tick this signal write happens (it's behind an @if keyed to renamingId), so focusing and
+    // selecting its text has to wait one tick for Angular to actually render it.
+    queueMicrotask(() => {
+      const field = this.renameFieldRef?.nativeElement;
+      field?.focus();
+      field?.select();
+    });
+  }
+
+  cancelRename(): void {
+    this.renamingId.set(null);
+  }
+
+  /** Enter commits, blur commits (so clicking away doesn't silently discard an edit the way pressing
+   * Escape deliberately does), Escape cancels - see the template's (keydown.escape). */
+  commitRename(session: ChatSessionSummary): void {
+    if (this.renamingId() !== session.id) {
+      // Already committed/cancelled by another event on the same field (e.g. Enter firing before the
+      // blur it also triggers gets a chance to run) - without this guard the second call would send a
+      // redundant rename request.
+      return;
+    }
+
+    const title = this.renameText().trim();
+    this.renamingId.set(null);
+
+    if (!title || title === session.title) {
+      return;
+    }
+
+    this.chatService.renameSession(session.id, title).subscribe({
+      next: (renamed) => {
+        this.sessions.update((existing) =>
+          existing.map((s) => (s.id === session.id ? { ...s, title: renamed.title } : s)),
+        );
       },
-      error: () => {
-        this.creatingNew.set(false);
-        this.loadError.set('Could not start a new chat.');
-      },
+      error: () => this.loadError.set('Could not rename that conversation.'),
     });
   }
 

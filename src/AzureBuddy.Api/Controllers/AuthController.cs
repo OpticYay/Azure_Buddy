@@ -51,4 +51,35 @@ public sealed class AuthController : ControllerBase
         await _authService.LogoutAsync(request.RefreshToken, cancellationToken);
         return NoContent();
     }
+
+    // Always 204, whether or not the email has an account - see AuthService.ForgotPasswordAsync's
+    // docs for why a differing response here would let an attacker enumerate registered emails.
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPasswordAsync(ForgotPasswordRequest request, CancellationToken cancellationToken)
+    {
+        await _authService.ForgotPasswordAsync(request.Email, cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPasswordAsync(ResetPasswordRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _authService.ResetPasswordAsync(request, cancellationToken);
+        return result.Success ? Ok(result.Tokens) : BadRequest(new ApiErrorResponse(result.Errors));
+    }
+
+    [HttpPost("confirm-email")]
+    public async Task<IActionResult> ConfirmEmailAsync(ConfirmEmailRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _authService.ConfirmEmailAsync(request, cancellationToken);
+        return result.Success ? Ok(result.Tokens) : BadRequest(new ApiErrorResponse(result.Errors));
+    }
+
+    // Always 204, same non-enumeration reasoning as forgot-password.
+    [HttpPost("resend-confirmation")]
+    public async Task<IActionResult> ResendConfirmationAsync(ResendConfirmationRequest request, CancellationToken cancellationToken)
+    {
+        await _authService.ResendConfirmationEmailAsync(request.Email, cancellationToken);
+        return NoContent();
+    }
 }

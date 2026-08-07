@@ -1,0 +1,145 @@
+<div class="page">
+  <header class="page__head">
+    <h1>Work item states</h1>
+    <p class="page__sub">
+      The valid states offered per work item type when Buddy updates something in Azure DevOps. Backend-configured,
+      not read live from ADO - see the note at the bottom of this page.
+    </p>
+  </header>
+
+  @if (loading()) {
+    <p class="state">Loading…</p>
+  } @else if (loadError()) {
+    <p class="alert">{{ loadError() }}</p>
+  } @else {
+    @if (actionError()) {
+      <p class="alert" [@popIn]>{{ actionError() }}</p>
+    }
+
+    @for (group of groups(); track group.workItemType) {
+      <div class="card">
+        <h2 class="card__title">{{ group.workItemType }}</h2>
+
+        <table class="states-table">
+          <thead>
+            <tr>
+              <th>State</th>
+              <th class="col-order">Order</th>
+              <th class="col-enabled">Enabled</th>
+              <th class="col-actions"></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of group.states; track row.id) {
+              <tr [class.is-disabled]="!row.isEnabled">
+                @if (editingId() === row.id) {
+                  <td>
+                    <input
+                      type="text"
+                      class="cell-input"
+                      [ngModel]="editDraft().stateName"
+                      (ngModelChange)="editDraft.set({ ...editDraft(), stateName: $event })"
+                    />
+                  </td>
+                  <td class="col-order">
+                    <input
+                      type="number"
+                      class="cell-input cell-input--number"
+                      [ngModel]="editDraft().displayOrder"
+                      (ngModelChange)="editDraft.set({ ...editDraft(), displayOrder: $event })"
+                    />
+                  </td>
+                  <td class="col-enabled">
+                    <input
+                      type="checkbox"
+                      [ngModel]="editDraft().isEnabled"
+                      (ngModelChange)="editDraft.set({ ...editDraft(), isEnabled: $event })"
+                    />
+                  </td>
+                  <td class="col-actions">
+                    <button type="button" class="btn btn--primary btn--sm" [disabled]="savingId() === row.id" (click)="saveEdit(row)">
+                      Save
+                    </button>
+                    <button type="button" class="btn btn--sm" [disabled]="savingId() === row.id" (click)="cancelEdit()">Cancel</button>
+                  </td>
+                } @else {
+                  <td>{{ row.stateName }}</td>
+                  <td class="col-order">{{ row.displayOrder }}</td>
+                  <td class="col-enabled">
+                    <input type="checkbox" [checked]="row.isEnabled" [disabled]="savingId() === row.id" (change)="toggleEnabled(row)" />
+                  </td>
+                  <td class="col-actions">
+                    <button type="button" class="btn btn--sm" [disabled]="savingId() !== null" (click)="startEdit(row)">Edit</button>
+                    <button type="button" class="btn btn--sm btn--danger" [disabled]="savingId() !== null" (click)="deleteState(row)">
+                      Delete
+                    </button>
+                  </td>
+                }
+              </tr>
+            }
+
+            @if (addingForType() === group.workItemType) {
+              <tr [@popIn]>
+                <td>
+                  <input
+                    type="text"
+                    class="cell-input"
+                    placeholder="State name"
+                    [ngModel]="addDraft().stateName"
+                    (ngModelChange)="addDraft.set({ ...addDraft(), stateName: $event })"
+                  />
+                </td>
+                <td class="col-order">
+                  <input
+                    type="number"
+                    class="cell-input cell-input--number"
+                    [ngModel]="addDraft().displayOrder"
+                    (ngModelChange)="addDraft.set({ ...addDraft(), displayOrder: $event })"
+                  />
+                </td>
+                <td class="col-enabled"></td>
+                <td class="col-actions">
+                  <button type="button" class="btn btn--primary btn--sm" [disabled]="adding()" (click)="submitAdd()">Add</button>
+                  <button type="button" class="btn btn--sm" [disabled]="adding()" (click)="cancelAdd()">Cancel</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+
+        @if (addingForType() !== group.workItemType) {
+          <div class="card__foot">
+            <button type="button" class="btn btn--sm" (click)="startAdd(group)">+ Add state</button>
+          </div>
+        }
+      </div>
+    }
+
+    <div class="card card--add-type">
+      @if (!addingNewType()) {
+        <button type="button" class="btn" (click)="startAddType()">+ Add work item type</button>
+      } @else {
+        <div class="add-type-form" [@popIn]>
+          <label class="field">
+            <span class="micro">Work item type</span>
+            <input type="text" [ngModel]="newTypeDraft().workItemType" (ngModelChange)="newTypeDraft.set({ ...newTypeDraft(), workItemType: $event })" placeholder="e.g. Feature" />
+          </label>
+          <label class="field">
+            <span class="micro">First state</span>
+            <input type="text" [ngModel]="newTypeDraft().stateName" (ngModelChange)="newTypeDraft.set({ ...newTypeDraft(), stateName: $event })" placeholder="e.g. New" />
+          </label>
+          <div class="actions">
+            <button type="button" class="btn btn--primary" [disabled]="adding()" (click)="submitAddType()">Add type</button>
+            <button type="button" class="btn" [disabled]="adding()" (click)="cancelAddType()">Cancel</button>
+          </div>
+        </div>
+      }
+    </div>
+
+    <p class="footnote">
+      This list is backend-configured rather than read live from Azure DevOps: it lets an admin fully control (and
+      deliberately narrow) which states chat can set, and works even without extra ADO permissions - but it can drift
+      out of sync if someone edits the process template's states directly in Azure DevOps without updating this page.
+    </p>
+  }
+</div>

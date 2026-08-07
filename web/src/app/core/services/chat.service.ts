@@ -10,6 +10,7 @@ import {
   ChatSessionSummary,
   CreateSessionRequest,
   PagedResult,
+  RenameSessionRequest,
 } from '../models/chat.models';
 
 const CHATS_BASE_URL = `${environment.apiUrl}/api/chats`;
@@ -37,12 +38,22 @@ export class ChatService {
     return this.http.delete<void>(`${CHATS_BASE_URL}/${sessionId}`);
   }
 
+  renameSession(sessionId: string, title: string): Observable<ChatSessionSummary> {
+    const request: RenameSessionRequest = { title };
+    return this.http.put<ChatSessionSummary>(`${CHATS_BASE_URL}/${sessionId}/title`, request);
+  }
+
   /** The "smart" path: POST /chat routes the message through the backend's deterministic flows /
    * conversational agent (see IntentRouter on the backend) and returns its reply. The backend persists
    * BOTH the user's message and the reply itself - this call doesn't need a separate "save my message"
    * step, unlike the screenshot path below. Text-only messages always go through here, never through
-   * the multipart endpoint (that one exists specifically for the screenshot case - see ChatsController). */
-  sendMessage(sessionId: string, message: string): Observable<ChatResponse> {
+   * the multipart endpoint (that one exists specifically for the screenshot case - see ChatsController).
+   *
+   * `sessionId: null` is how a brand-new, not-yet-persisted conversation sends its first message:
+   * ChatController.PostAsync creates the session AND appends this message in the same request, so there
+   * is never a moment where an empty session exists as a separate round trip the frontend has to manage -
+   * see message-composer.ts's sendText() and the wider "New Conversation" fix. */
+  sendMessage(sessionId: string | null, message: string): Observable<ChatResponse> {
     return this.http.post<ChatResponse>(LIVE_CHAT_URL, { sessionId, message });
   }
 

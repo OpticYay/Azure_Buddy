@@ -2,6 +2,7 @@ import { Component, computed, input } from '@angular/core';
 import { DatePipe } from '@angular/common';
 
 import { DisplayMessage } from '../../../core/models/display-message.model';
+import { MarkdownLitePipe } from '../../../shared/markdown-lite.pipe';
 
 // ── What a component input is ───────────────────────────────────────────────────────────────────
 // Most components in this app manage their own state - they fetch their own data and own their own
@@ -19,7 +20,7 @@ import { DisplayMessage } from '../../../core/models/display-message.model';
 // tag, and a timestamp, and the structured payloads sit in it naturally.
 @Component({
   selector: 'app-message-item',
-  imports: [DatePipe],
+  imports: [DatePipe, MarkdownLitePipe],
   templateUrl: './message-item.html',
   styleUrl: './message-item.css',
 })

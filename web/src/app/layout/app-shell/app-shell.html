@@ -8,8 +8,7 @@
 -->
 <header class="bar">
   <a class="brand" routerLink="/chat">
-    <!-- The mark echoes the work item stamp used throughout the app: mono, bracketed, brass. -->
-    <span class="brand__mark">AB</span>
+    <img class="brand__mark" src="/assets/azurebuddy-mark.png" alt="" width="24" height="24" />
     <span class="brand__name">Azure Buddy</span>
   </a>
 
@@ -21,14 +20,17 @@
            (LlmSettingsController's [Authorize(Roles = "Admin")] on the backend is), it just keeps a
            non-admin from seeing a settings screen they have no reason to open. -->
       <a routerLink="/admin/llm" routerLinkActive="is-active">Model</a>
+      <a routerLink="/admin/work-item-states" routerLinkActive="is-active">States</a>
     }
   </nav>
 
   <div class="account">
     @if (currentUser(); as user) {
       <!-- `@if (expr; as user)` checks the condition AND binds the non-null result to a local
-           template variable, so we don't call currentUser() twice and TypeScript can narrow it. -->
-      <span class="account__email">{{ user.email }}</span>
+           template variable, so we don't call currentUser() twice and TypeScript can narrow it.
+           The email itself is the link to /profile - the account area is already where a user looks
+           for "who am I signed in as", so that's also the natural place to find "manage my account". -->
+      <a class="account__email" routerLink="/profile" routerLinkActive="is-active">{{ user.email }}</a>
     }
     <button type="button" class="btn-quiet" (click)="logout()">Sign out</button>
   </div>

@@ -1,0 +1,108 @@
+<div class="page">
+  <header class="page__head">
+    <h1>Your account</h1>
+    <p class="page__sub">Update your display name and email, or change your password.</p>
+  </header>
+
+  @if (loading()) {
+    <p class="state">Loading…</p>
+  } @else if (loadError()) {
+    <p class="alert">{{ loadError() }}</p>
+  } @else {
+    <div class="card">
+      <h2 class="card__title">Profile</h2>
+
+      @if (!isEditingProfile()) {
+        <dl class="readout">
+          <dt class="micro">Display name</dt>
+          <dd>{{ profile()?.displayName }}</dd>
+
+          <dt class="micro">Email</dt>
+          <dd>{{ profile()?.email }}</dd>
+
+          @if (profile()?.roles?.length) {
+            <dt class="micro">Roles</dt>
+            <dd>{{ profile()?.roles?.join(', ') }}</dd>
+          }
+        </dl>
+
+        <div class="actions">
+          <button type="button" class="btn btn--primary" (click)="startEditingProfile()">Edit profile</button>
+        </div>
+      } @else {
+        <form [formGroup]="profileForm" (ngSubmit)="saveProfile()">
+          <label class="field">
+            <span class="micro">Display name</span>
+            <input type="text" formControlName="displayName" />
+            @if (profileForm.controls.displayName.touched && profileForm.controls.displayName.invalid) {
+              <span class="field__error">Required.</span>
+            }
+          </label>
+
+          <label class="field">
+            <span class="micro">Email</span>
+            <input type="email" formControlName="email" autocomplete="email" />
+            @if (profileForm.controls.email.touched && profileForm.controls.email.invalid) {
+              <span class="field__error">Enter a valid email address.</span>
+            }
+          </label>
+
+          @if (profileError()) {
+            <p class="alert">{{ profileError() }}</p>
+          }
+
+          <div class="actions">
+            <button type="submit" class="btn btn--primary" [disabled]="savingProfile()">
+              {{ savingProfile() ? 'Saving…' : 'Save' }}
+            </button>
+            <button type="button" class="btn" (click)="cancelEditingProfile()" [disabled]="savingProfile()">Cancel</button>
+          </div>
+        </form>
+      }
+    </div>
+
+    <div class="card">
+      <h2 class="card__title">Change password</h2>
+
+      <form [formGroup]="passwordForm" (ngSubmit)="changePassword()">
+        <label class="field">
+          <span class="micro">Current password</span>
+          <input type="password" formControlName="currentPassword" autocomplete="current-password" />
+          @if (passwordFieldErrors()['currentPassword']) {
+            <span class="field__error">{{ passwordFieldErrors()['currentPassword'] }}</span>
+          }
+        </label>
+
+        <label class="field">
+          <span class="micro">New password</span>
+          <input type="password" formControlName="newPassword" autocomplete="new-password" />
+          @if (passwordForm.controls.newPassword.touched && passwordForm.controls.newPassword.hasError('required')) {
+            <span class="field__error">Required.</span>
+          } @else if (passwordForm.controls.newPassword.touched && passwordForm.controls.newPassword.hasError('minlength')) {
+            <span class="field__error">At least 8 characters.</span>
+          } @else if (passwordFieldErrors()['newPassword']) {
+            <span class="field__error">{{ passwordFieldErrors()['newPassword'] }}</span>
+          }
+        </label>
+
+        <label class="field">
+          <span class="micro">Confirm new password</span>
+          <input type="password" formControlName="confirmNewPassword" autocomplete="new-password" />
+          @if (passwordForm.controls.confirmNewPassword.touched && passwordForm.hasError('mismatch')) {
+            <span class="field__error">Passwords don't match.</span>
+          }
+        </label>
+
+        @if (passwordError()) {
+          <p class="alert">{{ passwordError() }}</p>
+        }
+
+        <div class="actions">
+          <button type="submit" class="btn btn--primary" [disabled]="changingPassword()">
+            {{ changingPassword() ? 'Changing…' : 'Change password' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  }
+</div>
