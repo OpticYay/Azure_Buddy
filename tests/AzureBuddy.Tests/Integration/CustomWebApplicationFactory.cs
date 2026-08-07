@@ -47,17 +47,23 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
     /// (Database.MigrateAsync, not EnsureCreatedAsync) so the migrations themselves - not just the model
     /// they produce - are exercised by the test suite.
     ///
-    /// Accessing `Services` is what triggers WebApplicationFactory to actually build the host; it must
-    /// happen after `_connectionString` is set, since ConfigureWebHost below reads that field when
-    /// registering AppDbContext.
+    /// Migrations run against a standalone AppDbContext built directly from a DbContextOptionsBuilder,
+    /// deliberately NOT through `Services` - accessing `Services`/`Server` is what triggers
+    /// WebApplicationFactory to actually build AND START the host, and Program.cs's own startup code
+    /// (the admin-role-seeding block, which queries AspNetRoles) runs synchronously as part of that,
+    /// before control ever returns here. Every CI run so far failed with "Table ... AspNetRoles
+    /// doesn't exist" precisely because that startup query ran before this method's migration call
+    /// got a chance to create it - triggering the host build only after migrations have already
+    /// completed avoids the ordering problem entirely, rather than trying to win a race against it.
     /// </summary>
     public async Task InitializeAsync()
     {
         var container = await SharedMySqlContainer.GetAsync();
         _connectionString = await CreateIsolatedDatabaseAsync(container, _databaseName);
 
-        using var scope = Services.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>()
+            .UseMySql(_connectionString, new MySqlServerVersion(new Version(8, 0, 34)));
+        await using var dbContext = new AppDbContext(optionsBuilder.Options);
         await dbContext.Database.MigrateAsync();
     }
 
