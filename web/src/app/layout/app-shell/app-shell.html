@@ -27,8 +27,10 @@
   <div class="account">
     @if (currentUser(); as user) {
       <!-- `@if (expr; as user)` checks the condition AND binds the non-null result to a local
-           template variable, so we don't call currentUser() twice and TypeScript can narrow it. -->
-      <span class="account__email">{{ user.email }}</span>
+           template variable, so we don't call currentUser() twice and TypeScript can narrow it.
+           The email itself is the link to /profile - the account area is already where a user looks
+           for "who am I signed in as", so that's also the natural place to find "manage my account". -->
+      <a class="account__email" routerLink="/profile" routerLinkActive="is-active">{{ user.email }}</a>
     }
     <button type="button" class="btn-quiet" (click)="logout()">Sign out</button>
   </div>

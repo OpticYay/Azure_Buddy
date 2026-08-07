@@ -84,6 +84,15 @@
   font-family: var(--font-mono);
   font-size: var(--t-micro);
   color: var(--ink-300);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+
+.account__email:hover,
+.account__email.is-active {
+  color: var(--brass-lift);
+  border-bottom-color: var(--brass);
 }
 
 .btn-quiet {

@@ -1,0 +1,176 @@
+/* Same base pattern as llm-settings.css/work-item-states.css (page/card/field/actions/btn) -
+ * duplicated rather than shared, matching how this codebase already keeps each feature's styles
+ * self-contained. */
+:host {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.page {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--space-2xl) var(--space-lg);
+}
+
+.page__head {
+  margin-bottom: var(--space-lg);
+  padding-left: var(--space-md);
+  border-left: 2px solid var(--brass);
+}
+
+h1 {
+  font-size: var(--t-display);
+  margin-bottom: var(--space-xs);
+}
+
+.page__sub {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--t-sm);
+}
+
+.state {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--ink-300);
+}
+
+.card {
+  padding: var(--space-lg);
+  margin-bottom: var(--space-md);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+}
+
+.card__title {
+  margin: 0 0 var(--space-md);
+  font-size: var(--t-lg, 1.1rem);
+}
+
+.readout {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 0;
+  margin: 0 0 var(--space-lg);
+}
+
+.readout dt {
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.readout dd {
+  margin: 0;
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  color: var(--ink-800);
+  overflow-wrap: anywhere;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.field input {
+  padding: 9px var(--space-sm);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+}
+
+.field input:focus-visible {
+  outline: none;
+  border-color: var(--brass);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--brass-wash);
+}
+
+.field__error {
+  font-size: var(--t-sm);
+  color: var(--fail);
+}
+
+.alert {
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--fail-wash);
+  border: 1px solid var(--fail-rule);
+  border-radius: var(--r-sm);
+  color: var(--fail);
+  font-size: var(--t-sm);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 8px var(--space-md);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-700);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 500;
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--ink-400);
+  background: var(--surface-hover);
+}
+
+.btn--primary {
+  border-color: var(--ink-900);
+  background: var(--ink-900);
+  color: var(--surface);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--ink-700);
+  border-color: var(--ink-700);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+@media (max-width: 560px) {
+  .page {
+    padding: var(--space-lg) var(--space-md);
+  }
+
+  .readout {
+    grid-template-columns: 1fr;
+  }
+
+  .readout dt {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+}

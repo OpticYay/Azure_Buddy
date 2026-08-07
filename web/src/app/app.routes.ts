@@ -75,6 +75,10 @@ export const routes: Routes = [
           import('./features/settings/ado-settings/ado-settings').then((m) => m.AdoSettings),
       },
       {
+        path: 'profile',
+        loadComponent: () => import('./features/profile/profile').then((m) => m.Profile),
+      },
+      {
         // Both guards run: authGuard already applies to this whole layout route, and adminGuard adds
         // the further "and are they an admin" check on top - see admin-guard.ts for why a non-admin
         // is bounced to /chat rather than /login here.

@@ -198,6 +198,13 @@ export class AuthService {
     return this.accessToken();
   }
 
+  /** Used by AccountService's changePassword call so the backend can spare THIS session's refresh
+   * token from the other-sessions revocation it does on a successful password change - see
+   * ChangePasswordRequest's docs. Null if there's no stored session, same as a logged-out state. */
+  getRefreshToken(): string | null {
+    return localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
+  }
+
   clearSession(): void {
     this.accessToken.set(null);
     localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
