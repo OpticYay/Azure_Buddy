@@ -26,9 +26,13 @@ jobs:
       - name: Build
         run: dotnet build AzureBuddy.slnx --no-restore --configuration Release
 
-      # The test suite swaps AppDbContext to EF Core's InMemory provider and IAdoClient to a fake
-      # (see CustomWebApplicationFactory) specifically so it never needs a live MySQL server or a real
-      # Azure DevOps org - no service containers or secrets required to run this job.
+      # The test suite runs against a real MySQL database via Testcontainers (see
+      # CustomWebApplicationFactory/SharedMySqlContainer), not EF Core's InMemory provider - InMemory
+      # doesn't enforce MySQL's SQL dialect, constraints, or string-comparison behavior closely enough
+      # for these to be genuine integration tests. Testcontainers needs Docker, which ubuntu-latest
+      # GitHub-hosted runners already have preinstalled, so no extra service-container config is needed
+      # here - the container is started by the test process itself on first use. IAdoClient is still
+      # swapped for a fake, so no real Azure DevOps org or secrets are required either.
       - name: Test
         run: dotnet test AzureBuddy.slnx --no-build --configuration Release --logger "console;verbosity=normal"
 

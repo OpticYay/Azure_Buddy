@@ -6,14 +6,21 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using MySqlConnector;
+using Testcontainers.MySql;
 
 namespace AzureBuddy.Tests.Integration;
 
 /// <summary>
 /// Boots the real ASP.NET Core pipeline (real routing, real [Authorize]/JWT validation, real
-/// controllers/services) in-memory via WebApplicationFactory&lt;Program&gt;, with a few things swapped
-/// out so tests don't need a live MySQL server, a live Azure DevOps org, or a real mailbox:
-///   1. AppDbContext's provider is switched from MySQL to EF Core's InMemory provider.
+/// controllers/services) via WebApplicationFactory&lt;Program&gt;, against a real MySQL database (a
+/// Testcontainers-managed container - see SharedMySqlContainer) rather than EF Core's InMemory
+/// provider: InMemory doesn't enforce MySQL's SQL dialect, constraints, or string-comparison behavior,
+/// so a test could pass against InMemory and still fail (or behave subtly differently, e.g. around
+/// case-insensitive email lookups) against production's real database. A few other things are swapped
+/// out so tests don't need a live Azure DevOps org or a real mailbox:
+///   1. AppDbContext's connection string points at a uniquely-named database on the shared MySQL
+///      container instead of Program.cs's own (CI-unavailable) configuration value.
 ///   2. IAdoClient is replaced with FakeAdoClient (exposed via the AdoClient property) so tests can
 ///      configure ADO responses per-scenario without any network call.
 ///   3. IEmailSender is replaced with FakeEmailSender (exposed via the EmailSender property) so tests
@@ -22,12 +29,68 @@ namespace AzureBuddy.Tests.Integration;
 /// runs exactly as it does in production - this is what makes these "integration" rather than "unit"
 /// tests: they exercise the real DI wiring and HTTP pipeline, not a hand-built subset of it.
 /// </summary>
-public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
+public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-    private readonly string _databaseName = $"AzureBuddyTests-{Guid.NewGuid()}";
+    private readonly string _databaseName = $"azurebuddy_test_{Guid.NewGuid():N}";
+    private string _connectionString = string.Empty;
 
     public FakeAdoClient AdoClient { get; } = new();
     public FakeEmailSender EmailSender { get; } = new();
+
+    /// <summary>
+    /// Runs once per CustomWebApplicationFactory instance (i.e. once per test class that uses
+    /// IClassFixture&lt;CustomWebApplicationFactory&gt;, plus once for each standalone
+    /// `new CustomWebApplicationFactory()` a test constructs for its own isolated database - see
+    /// LlmSettingsEndpointsTests). It never starts a new container itself; it only asks the one shared
+    /// container for a fresh, uniquely-named database, then applies real EF Core migrations against it
+    /// (Database.MigrateAsync, not EnsureCreatedAsync) so the migrations themselves - not just the model
+    /// they produce - are exercised by the test suite.
+    ///
+    /// Accessing `Services` is what triggers WebApplicationFactory to actually build the host; it must
+    /// happen after `_connectionString` is set, since ConfigureWebHost below reads that field when
+    /// registering AppDbContext.
+    /// </summary>
+    public async Task InitializeAsync()
+    {
+        var container = await SharedMySqlContainer.GetAsync();
+        _connectionString = await CreateIsolatedDatabaseAsync(container, _databaseName);
+
+        using var scope = Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await dbContext.Database.MigrateAsync();
+    }
+
+    Task IAsyncLifetime.DisposeAsync() => Task.CompletedTask;
+
+    /// <summary>
+    /// Test isolation strategy: rather than wrapping each test in a rolled-back transaction (this
+    /// codebase's tests exercise full HTTP round-trips through AuthController/AccountController etc.,
+    /// which commit their own SaveChangesAsync calls independently - there's no single ambient
+    /// transaction to wrap) or reseeding tables between tests, every CustomWebApplicationFactory
+    /// instance gets its own MySQL database, created fresh here and never reused. Combined with the
+    /// existing convention of unique per-test data (RegisterAsync defaults to a random
+    /// `user-{Guid}@example.com`), this means tests within a class can run in any order without
+    /// colliding, and tests in different classes are on entirely separate schemas - the same isolation
+    /// shape the previous EF InMemory provider gave for free, just against a real server.
+    /// </summary>
+    private static async Task<string> CreateIsolatedDatabaseAsync(MySqlContainer container, string databaseName)
+    {
+        var connectionStringBuilder = new MySqlConnectionStringBuilder(container.GetConnectionString());
+
+        await using (var connection = new MySqlConnection(connectionStringBuilder.ConnectionString))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            // databaseName is always our own Guid-based name (never user input), so string
+            // interpolation here isn't a SQL-injection concern - MySQL also doesn't support
+            // parameterizing identifiers like a database name.
+            command.CommandText = $"CREATE DATABASE `{databaseName}`;";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        connectionStringBuilder.Database = databaseName;
+        return connectionStringBuilder.ConnectionString;
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -41,7 +104,8 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
             // the collection by the time this callback runs) has to be explicitly removed before a
             // replacement will take effect - simply calling AddDbContext again here would be a no-op.
             services.RemoveAll<DbContextOptions<AppDbContext>>();
-            services.AddDbContext<AppDbContext>(options => options.UseInMemoryDatabase(_databaseName));
+            services.AddDbContext<AppDbContext>(options =>
+                options.UseMySql(_connectionString, new MySqlServerVersion(new Version(8, 0, 34))));
 
             services.RemoveAll<IAdoClient>();
             services.AddSingleton<IAdoClient>(AdoClient);
