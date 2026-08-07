@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using DotNet.Testcontainers.Containers;
 using MySqlConnector;
 using Testcontainers.MySql;
 
@@ -72,21 +73,28 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
     /// `user-{Guid}@example.com`), this means tests within a class can run in any order without
     /// colliding, and tests in different classes are on entirely separate schemas - the same isolation
     /// shape the previous EF InMemory provider gave for free, just against a real server.
+    ///
+    /// This has to run as MySQL's root user, not the app's own DB user: the official MySQL image's
+    /// entrypoint (which SharedMySqlContainer's MYSQL_USER/MYSQL_DATABASE env vars feed into) only
+    /// grants that user privileges on the ONE database named at container startup - it has no CREATE
+    /// DATABASE privilege, so opening a connection with the app's own credentials and issuing CREATE
+    /// DATABASE fails with "Access denied". ExecScriptAsync runs a script inside the container via the
+    /// mysql CLI as root instead of over the network with the app's limited credentials, sidestepping
+    /// that without needing to construct/guess a root connection string ourselves.
     /// </summary>
     private static async Task<string> CreateIsolatedDatabaseAsync(MySqlContainer container, string databaseName)
     {
         var connectionStringBuilder = new MySqlConnectionStringBuilder(container.GetConnectionString());
 
-        await using (var connection = new MySqlConnection(connectionStringBuilder.ConnectionString))
-        {
-            await connection.OpenAsync();
-            await using var command = connection.CreateCommand();
-            // databaseName is always our own Guid-based name (never user input), so string
-            // interpolation here isn't a SQL-injection concern - MySQL also doesn't support
-            // parameterizing identifiers like a database name.
-            command.CommandText = $"CREATE DATABASE `{databaseName}`;";
-            await command.ExecuteNonQueryAsync();
-        }
+        // databaseName is always our own Guid-based name (never user input) and appUser comes from our
+        // own SharedMySqlContainer setup (not user input either), so string interpolation here isn't a
+        // SQL-injection concern - MySQL also doesn't support parameterizing identifiers like a database
+        // or user name.
+        var appUser = connectionStringBuilder.UserID;
+        await container.ExecScriptAsync(
+            $"CREATE DATABASE `{databaseName}`; " +
+            $"GRANT ALL PRIVILEGES ON `{databaseName}`.* TO '{appUser}'@'%';")
+            .ThrowOnFailure();
 
         connectionStringBuilder.Database = databaseName;
         return connectionStringBuilder.ConnectionString;
