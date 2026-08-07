@@ -2,12 +2,15 @@ import { Pipe, PipeTransform, inject } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
 /** Renders the small subset of markdown the LLM actually writes - **bold**, *italic* or _italic_,
- * `code`, "* "/"- " bullet lists, and pipe tables - as real HTML instead of literal asterisks/pipes/
- * backticks (this was previously plain text interpolation, so a reply like "call
- * `get_my_work_items`" showed the backticks verbatim, and "*logo missing*" showed the asterisks).
- * Not a general markdown parser: no headings, links, nested lists, or numbered lists, because the
- * system prompt never asks the model to produce those here - only handling what's actually used
- * keeps this small enough to read in one sitting instead of reaching for a dependency.
+ * `code`, "* "/"- " bullet lists, "#" through "######" headings, and pipe tables - as real HTML
+ * instead of literal asterisks/pipes/backticks/hashes (this was previously plain text
+ * interpolation, so a reply like "call `get_my_work_items`" showed the backticks verbatim, and
+ * "*logo missing*" showed the asterisks; "### Summary" showed the hashes literally, since nothing
+ * in the system prompt asks for headings but a conversational reply produces them anyway whenever
+ * the model decides a section label reads better than another paragraph).
+ * Not a general markdown parser: no links, nested lists, or numbered lists, because the system
+ * prompt never asks the model to produce those here - only handling what's actually used keeps
+ * this small enough to read in one sitting instead of reaching for a dependency.
  *
  * Tables matter specifically because the deterministic flows (ViewBugsFlow, MyItemsFlow) return
  * STRUCTURED table data that message-item.html renders directly, but the conversational agent writes
@@ -69,6 +72,17 @@ function renderMarkdownLite(raw: string, workItemBaseUrl: string | null = null):
       flushList();
       blocks.push(renderTable(lines.slice(i, tableEnd), workItemBaseUrl));
       i = tableEnd - 1;
+      continue;
+    }
+
+    // "#" through "######" - the leading hashes are dropped and the level itself isn't kept, since
+    // a chat reply only ever needs one visual weight of section label (see .md-heading in
+    // message-item.css), not a full h1-h6 hierarchy.
+    const headingMatch = /^\s*#{1,6}\s+(.*)$/.exec(line);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      blocks.push(`<p class="md-heading">${renderInline(headingMatch[1])}</p>`);
       continue;
     }
 

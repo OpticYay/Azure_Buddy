@@ -136,6 +136,25 @@
   margin-bottom: 0;
 }
 
+/* A markdown heading in the agent's own prose (see markdown-lite.pipe.ts) - styled as an instrument
+   label, matching .micro/.prose-table th, rather than the page-title-sized h1/h2/h3 defined in
+   styles.css, which would read as oversized inside a chat bubble. Extra margin-top (not on the
+   first child) is what gives it visual separation from the paragraph before it without leaving a
+   gap when it opens the message. */
+:host ::ng-deep .prose .md-heading {
+  margin: var(--space-md) 0 var(--space-xs);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--ink-400);
+}
+
+:host ::ng-deep .prose .md-heading:first-child {
+  margin-top: 0;
+}
+
 :host ::ng-deep .prose ul {
   margin: 0 0 var(--space-sm);
   padding-left: 1.25em;
