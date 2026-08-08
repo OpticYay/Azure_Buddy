@@ -6,14 +6,8 @@ import { map } from 'rxjs';
 import { SessionList } from '../session-list/session-list';
 import { MessageThread } from '../message-thread/message-thread';
 
-// ── Bridging RxJS and signals ────────────────────────────────────────────────────────────────────
-// The Angular Router exposes route parameters (like :sessionId in "/chat/:sessionId") as an
-// Observable, because the SAME component instance is reused across navigations between /chat and
-// /chat/:sessionId - it doesn't get destroyed and recreated, so it needs some way to be notified when
-// just the parameter changes. `toSignal(...)` converts that Observable into a signal, so the rest of
-// this component (and its template) can read `sessionId()` like any other signal instead of having to
-// `.subscribe()` and manually manage that subscription's lifecycle (remembering to unsubscribe when
-// the component is destroyed, etc. - toSignal handles that automatically).
+// The SAME component instance is reused across navigations between /chat and /chat/:sessionId (it
+// isn't destroyed and recreated), so sessionId needs to be read reactively rather than once.
 @Component({
   selector: 'app-chat-page',
   imports: [SessionList, MessageThread],

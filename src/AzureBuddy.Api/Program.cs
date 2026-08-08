@@ -22,8 +22,6 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-
 builder.Services.AddControllers()
     // Without this, every C# enum (ChatMessageRole, ChatMessageType) serializes as its underlying int
     // (0, 1, ...) by System.Text.Json's default behavior - forcing every API consumer to hardcode a
@@ -72,7 +70,6 @@ builder.Services.AddCors(options =>
         .AllowAnyMethod()
         .AllowCredentials());
 });
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -122,8 +119,8 @@ builder.Services.AddProblemDetails();
 // ServerVersion.AutoDetect, which opens a connection at startup just to ask the server its version)
 // keeps app startup from depending on network round-trips before it's even accepting requests - if
 // your MySQL server is a different version, update this to match.
-var connectionString = builder.Configuration.GetConnectionString("Default")
-    ?? throw new InvalidOperationException("Missing ConnectionStrings:Default in configuration.");
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("Missing ConnectionStrings:DefaultConnection in configuration.");
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 34))));
@@ -273,7 +270,6 @@ using (var scope = app.Services.CreateScope())
         .LoadFromDatabaseIfPresentAsync();
 }
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -293,7 +289,6 @@ app.UseRateLimiter();
 // rejected by the auth pipeline before CORS ever got a chance to approve the real request.
 app.UseCors();
 
-// Authentication (who are you?) must run before Authorization (are you allowed?).
 app.UseAuthentication();
 app.UseAuthorization();
 

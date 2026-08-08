@@ -13,10 +13,6 @@ const COLLAPSED_STORAGE_KEY = 'azurebuddy_sidebar_collapsed';
  * else in CSS on purpose - see the `collapsed` computed below for why this lives in TypeScript. */
 const NARROW_SCREEN = '(max-width: 720px)';
 
-// `DatePipe` is what powers the `| date: 'short'` in the template - a "pipe" is a small, reusable
-// transform you apply to a value right in the template with `|` (piping the value through it), instead
-// of writing `formatDate(session.updatedAt)` in the component class every place you display a date.
-// Like everything else here it must be explicitly imported since components are standalone.
 @Component({
   selector: 'app-session-list',
   imports: [RouterLink, RouterLinkActive, DatePipe],
@@ -33,7 +29,6 @@ export class SessionList implements OnInit {
   readonly loadError = signal<string | null>(null);
   readonly creatingNew = signal(false);
 
-  // ── Collapsed state: one source of truth ──────────────────────────────────────────────────────
   // Read synchronously at construction so the rail renders in its remembered state on the very
   // first frame, rather than flashing expanded and then snapping shut.
   private readonly preferCollapsed = signal(localStorage.getItem(COLLAPSED_STORAGE_KEY) === 'true');

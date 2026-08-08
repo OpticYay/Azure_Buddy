@@ -1,0 +1,21 @@
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+**/.idea/
+
+# Real appsettings files hold live secrets and are gitignored for the same reason - never bake them
+# into an image. Configuration is supplied via environment variables at container run time instead.
+**/appsettings.json
+**/appsettings.*.json
+!**/appsettings.Example.json
+
+DataProtection-Keys/
+.git/
+.claude/
+web/
+tests/
+N8N chatbot files/
+*.md
+Dockerfile
+.dockerignore

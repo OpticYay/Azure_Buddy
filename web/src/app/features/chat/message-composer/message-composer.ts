@@ -6,13 +6,9 @@ import { ChatService } from '../../../core/services/chat.service';
 import { extractApiErrorMessage } from '../../../core/models/api-error.model';
 import { popIn } from '../../../shared/animations';
 
-// ── What is a component output? ─────────────────────────────────────────────────────────────────
-// The mirror image of `input()`: `output<void>()` lets THIS component notify its PARENT that
-// something happened, without the parent handing it a callback function or this component needing to
-// know anything about the parent. The parent listens with the same event-binding syntax as a native
-// DOM event: `<app-message-composer (messageSent)="onMessageSent()" />`. We emit after every
-// successful send (text or screenshot) so MessageThread knows to reload the message list - the
-// composer's job ends at "the backend now has this message," not "update the thread's own state."
+// Emitted after every successful send (text or screenshot) so MessageThread knows to reload the
+// message list - the composer's job ends at "the backend now has this message," not "update the
+// thread's own state."
 @Component({
   selector: 'app-message-composer',
   imports: [FormsModule],

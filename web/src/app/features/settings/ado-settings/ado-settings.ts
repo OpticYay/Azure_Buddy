@@ -8,16 +8,6 @@ import { extractApiErrorMessage } from '../../../core/models/api-error.model';
 import { ToastService } from '../../../core/services/toast.service';
 import { popIn } from '../../../shared/animations';
 
-// ── What is OnInit, and why not just do this work in the constructor? ──────────────────────────────
-// A component goes through a "lifecycle": Angular constructs the class, then sets up its inputs, then
-// calls `ngOnInit()` once, then re-renders it whenever its state changes, and eventually destroys it
-// (`ngOnDestroy()`) when it's removed from the page. `OnInit` is a TypeScript "interface" - implementing
-// it (and writing `ngOnInit()`) is a signal to Angular "call this method once, right after this
-// component is fully initialized." We fetch the ADO settings here rather than in the constructor
-// because the constructor's job (in Angular's convention) is just wiring up dependencies via inject()/
-// DI - kicking off an HTTP call there works technically, but ngOnInit is the documented, expected place
-// for "do something once this component is ready to be used," which matters once a component gets more
-// complex (e.g. needs an @Input() value to be set before it knows what to fetch).
 @Component({
   selector: 'app-ado-settings',
   imports: [ReactiveFormsModule],

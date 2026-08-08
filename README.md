@@ -45,7 +45,7 @@ environment variables / `dotnet user-secrets` locally:
 
 | Key | What it is |
 |---|---|
-| `ConnectionStrings:Default` | MySQL connection string, e.g. `server=localhost;port=3306;database=azurebuddy;user=azurebuddy;password=...` |
+| `ConnectionStrings:DefaultConnection` | MySQL connection string, e.g. `server=localhost;port=3306;database=azurebuddy;user=azurebuddy;password=...` |
 | `Jwt:SigningKey` | Random secret (32+ bytes) used to sign/verify JWT access tokens. Treat like a password - a leaked signing key lets anyone mint valid tokens for any user. |
 | `Jwt:AccessTokenMinutes` / `Jwt:RefreshTokenDays` | Token lifetimes |
 | `Identity:Password:*`, `Identity:Lockout:*` | Password complexity and lockout policy (see `Microsoft.AspNetCore.Identity.IdentityOptions` for all available keys) |
@@ -61,6 +61,26 @@ Apply migrations before first run:
 dotnet tool install --global dotnet-ef
 dotnet ef database update --project src/AzureBuddy.Data --startup-project src/AzureBuddy.Api
 ```
+
+### Running with Docker
+
+```bash
+cp .env.example .env   # fill in JWT_SIGNING_KEY at minimum
+docker compose up -d --build
+dotnet ef database update --project src/AzureBuddy.Data --startup-project src/AzureBuddy.Api \
+  --connection "server=localhost;port=3307;database=azurebuddy;user=azurebuddy;password=azurebuddy"
+```
+
+API is then reachable at `http://localhost:8080`. `docker-compose.yml` wires up the API, a MySQL
+container, and two named volumes - one for MySQL's data directory, one for the Data Protection keys
+that encrypt stored ADO PATs (mounted so it survives `docker compose down`/container recreation;
+without it every restart would generate fresh keys and every previously-stored PAT would become
+unreadable). MySQL's host-published port defaults to 3307, not 3306, to avoid colliding with a MySQL
+already running locally - override `MYSQL_PORT` in `.env` if that's also taken.
+
+`Dockerfile` on its own (no compose) builds just the API image; see its comments for the full
+`docker build`/`docker run` flow and why config is passed as environment variables rather than baked
+into the image.
 
 ### Endpoints
 
