@@ -16,12 +16,17 @@ namespace AzureBuddy.Tests.Routing;
 
 /// <summary>
 /// Covers a real bug reported from actual use: a deterministic flow (MyItemsFlow, ViewBugsFlow, ...)
-/// answers a turn without ever going through AzureBuddyAgent, so the agent's own ChatHistoryStore never
-/// learned what was shown. A later turn that falls through to the agent ("summarize these bugs") then
-/// had no idea what "these" referred to - the agent's memory was missing everything the deterministic
-/// flows had handled. IntentRouter.RouteAsync now records every deterministic-flow turn into that same
-/// history, keyed by the same sessionId, so the agent's memory matches the full conversation regardless
-/// of which turns it personally handled.
+/// answers a turn without ever going through AzureBuddyAgent, so the agent's own memory never learned
+/// what was shown. A later turn that falls through to the agent ("summarize these bugs") then had no
+/// idea what "these" referred to - the agent's memory was missing everything the deterministic flows
+/// had handled. IntentRouter.RouteAsync now records every deterministic-flow turn into the same
+/// ChatSessionWindow the agent reads from, keyed by the same sessionId, so the agent's memory matches
+/// the full conversation regardless of which turns it personally handled.
+///
+/// Also covers the second bug the Redis-backed chat history design exists to fix: on ANY process
+/// restart (or, with Redis, a cross-replica cache miss), IntentRouter must rehydrate from MySQL rather
+/// than silently starting the agent's memory over from empty - see the Rehydrate-labeled tests below,
+/// which use a fresh IChatHistoryStore per RouteAsync call to simulate exactly that.
 /// </summary>
 public class IntentRouterTests
 {
@@ -48,6 +53,34 @@ public class IntentRouterTests
                 FinishReason = ChatFinishReason.Stop,
                 Text = text,
             });
+        }
+    }
+
+    /// <summary>Same shape as production's InMemoryChatHistoryStore + InMemoryChatWindowCache, but with
+    /// no IChatHistorySource dependency to wire up - these tests build a fresh AppDbContext per test and
+    /// never persist anything to it, so rehydration always sees an empty MySQL, which is exactly what a
+    /// brand-new session's first turn looks like. A NEW instance of this per RouteAsync call is what
+    /// simulates "the process restarted / a different replica handled this turn" for the Rehydrate tests.</summary>
+    private sealed class FakeChatHistoryStore : IChatHistoryStore
+    {
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, IReadOnlyList<ChatMessage>> Sessions = new();
+
+        public Task<ChatSessionWindow> LoadAsync(string sessionId, CancellationToken cancellationToken = default)
+        {
+            var messages = Sessions.TryGetValue(sessionId, out var cached) ? cached : Array.Empty<ChatMessage>();
+            return Task.FromResult(new ChatSessionWindow(sessionId, messages, Guid.NewGuid().ToString()));
+        }
+
+        public Task SaveAsync(ChatSessionWindow window, CancellationToken cancellationToken = default)
+        {
+            Sessions[window.SessionId] = window.Messages;
+            return Task.CompletedTask;
+        }
+
+        public Task EvictAsync(string sessionId, CancellationToken cancellationToken = default)
+        {
+            Sessions.TryRemove(sessionId, out _);
+            return Task.CompletedTask;
         }
     }
 
@@ -89,7 +122,7 @@ public class IntentRouterTests
         // invoked (its default FakeAdoClient behavior would answer "No matching work items found").
         var myItemsFlow = new MyItemsFlow(adoClient, connectionAccessor);
 
-        var historyStore = new ChatHistoryStore();
+        var historyStore = new FakeChatHistoryStore();
         var agentClient = new ScriptedChatClient("Handled both parts of your request.");
         var toolCatalog = new ToolCatalog(new AdoWorkItemToolset(adoClient, connectionAccessor, NewStateConfigService()));
         var agent = new AzureBuddyAgent(agentClient, historyStore, toolCatalog, NullLogger<AzureBuddyAgent>.Instance);
@@ -129,7 +162,7 @@ public class IntentRouterTests
         };
         var myItemsFlow = new MyItemsFlow(adoClient, connectionAccessor);
 
-        var historyStore = new ChatHistoryStore();
+        var historyStore = new FakeChatHistoryStore();
         var agentClient = new ScriptedChatClient("Here is your summary.");
         var toolCatalog = new ToolCatalog(new AdoWorkItemToolset(adoClient, connectionAccessor, NewStateConfigService()));
         var agent = new AzureBuddyAgent(agentClient, historyStore, toolCatalog, NullLogger<AzureBuddyAgent>.Instance);
@@ -167,7 +200,7 @@ public class IntentRouterTests
             Current = new AdoConnectionContext("https://dev.azure.com/org", "Proj", "fake-pat"),
         };
         var myItemsFlow = new MyItemsFlow(adoClient, connectionAccessor);
-        var historyStore = new ChatHistoryStore();
+        var historyStore = new FakeChatHistoryStore();
         var agentClient = new ScriptedChatClient("unused");
         var toolCatalog = new ToolCatalog(new AdoWorkItemToolset(adoClient, connectionAccessor, NewStateConfigService()));
         var agent = new AzureBuddyAgent(agentClient, historyStore, toolCatalog, NullLogger<AzureBuddyAgent>.Instance);
@@ -178,8 +211,51 @@ public class IntentRouterTests
         var reply = await router.RouteAsync(sessionId, "show my open work items", CancellationToken.None);
 
         Assert.Equal("No matching work items found assigned to you.", reply.Text);
+
+        var window = await historyStore.LoadAsync(sessionId);
         Assert.Contains(
-            historyStore.GetOrCreate(sessionId).Messages,
+            window.Messages,
             m => m.Role == ChatRole.Assistant && m.Content == "No matching work items found assigned to you.");
+    }
+
+    [Fact]
+    public async Task RouteAsync_SecondTurnOnFreshStore_RehydratesFirstTurnRatherThanStartingEmpty()
+    {
+        // Simulates a process restart (or, in production, a different replica) between two turns of the
+        // SAME session: the store backing the second RouteAsync call has no in-memory record of the
+        // first turn, only whatever a real IChatHistorySource would have persisted. FakeChatHistoryStore
+        // uses a static dictionary shared across instances specifically so this test can prove the
+        // window a second "replica" loads for this session already contains the first turn.
+        var extractorClient = new ScriptedChatClient(MyItemsExtraction, OtherExtraction);
+        var intentExtractor = new IntentExtractor(extractorClient, NullLogger<IntentExtractor>.Instance);
+
+        var adoClient = new FakeAdoClient(); // no results - keeps the first turn's reply simple to match on
+        var connectionAccessor = new AdoConnectionContextAccessor
+        {
+            Current = new AdoConnectionContext("https://dev.azure.com/org", "Proj", "fake-pat"),
+        };
+        var myItemsFlow = new MyItemsFlow(adoClient, connectionAccessor);
+        var toolCatalog = new ToolCatalog(new AdoWorkItemToolset(adoClient, connectionAccessor, NewStateConfigService()));
+
+        var firstStore = new FakeChatHistoryStore();
+        var firstAgentClient = new ScriptedChatClient("unused");
+        var firstAgent = new AzureBuddyAgent(firstAgentClient, firstStore, toolCatalog, NullLogger<AzureBuddyAgent>.Instance);
+        var firstRouter = new IntentRouter(intentExtractor, null!, null!, null!, myItemsFlow, null!, firstAgent, firstStore);
+
+        var sessionId = Guid.NewGuid().ToString();
+        await firstRouter.RouteAsync(sessionId, "show my open work items", CancellationToken.None);
+
+        // A brand-new store instance - FakeChatHistoryStore's backing dictionary is static, mirroring
+        // Redis being genuinely external to any one store instance.
+        var secondStore = new FakeChatHistoryStore();
+        var secondAgentClient = new ScriptedChatClient("Here is your summary.");
+        var secondAgent = new AzureBuddyAgent(secondAgentClient, secondStore, toolCatalog, NullLogger<AzureBuddyAgent>.Instance);
+        var secondRouter = new IntentRouter(intentExtractor, null!, null!, null!, myItemsFlow, null!, secondAgent, secondStore);
+
+        await secondRouter.RouteAsync(sessionId, "summarize that", CancellationToken.None);
+
+        var historySeenByAgent = secondAgentClient.ReceivedHistories.Single();
+        Assert.Contains(historySeenByAgent.Messages, m => m.Role == ChatRole.User && m.Content == "show my open work items");
+        Assert.Contains(historySeenByAgent.Messages, m => m.Role == ChatRole.Assistant && m.Content == "No matching work items found assigned to you.");
     }
 }

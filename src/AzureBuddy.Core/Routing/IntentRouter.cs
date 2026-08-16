@@ -24,7 +24,7 @@ public sealed class IntentRouter
     private readonly MyItemsFlow _myItemsFlow;
     private readonly GetPrioritizedWorkItemsFlow _getPrioritizedWorkItemsFlow;
     private readonly IConversationalAgent _agent;
-    private readonly ChatHistoryStore _historyStore;
+    private readonly IChatHistoryStore _historyStore;
 
     public IntentRouter(
         IntentExtractor intentExtractor,
@@ -34,7 +34,7 @@ public sealed class IntentRouter
         MyItemsFlow myItemsFlow,
         GetPrioritizedWorkItemsFlow getPrioritizedWorkItemsFlow,
         IConversationalAgent agent,
-        ChatHistoryStore historyStore)
+        IChatHistoryStore historyStore)
     {
         _intentExtractor = intentExtractor;
         _createBugFlow = createBugFlow;
@@ -49,6 +49,14 @@ public sealed class IntentRouter
     public async Task<ChatReply> RouteAsync(string sessionId, string userMessage, CancellationToken cancellationToken = default)
     {
         var extracted = await _intentExtractor.ExtractAsync(userMessage, cancellationToken);
+
+        // Loaded exactly once per turn, here - above the fork between the deterministic-flow path and
+        // the agent path below - because IntentRouter is the only place that sits above both. AddUserTurn
+        // (not a plain Add) guards against the window already ending with this exact message: ChatController.
+        // PostAsync persists the user's message to MySQL BEFORE calling RouteAsync, so on a cache miss
+        // DbChatHistorySource can rehydrate a window whose last row already IS this message.
+        var window = await _historyStore.LoadAsync(sessionId, cancellationToken);
+        window.AddUserTurn(LlmChatMessage.User(userMessage));
 
         // Every deterministic flow below can only act on the single request `extracted.Intent`
         // captures. A message that asks for more than one thing ("file a bug for X and show my open
@@ -74,14 +82,13 @@ public sealed class IntentRouter
             // A deterministic flow just answered this turn without ever going through
             // AzureBuddyAgent - but a LATER turn ("summarize these", "what about #12352 specifically")
             // might fall through to the agent and need to know what was just shown. Recording the turn
-            // into the same per-session ChatHistory the agent reads from (keyed by this same
-            // sessionId - see ChatController's comment on that) keeps the agent's memory a complete
-            // record of the conversation, not just the turns it happened to handle itself. The reply
-            // text already has the rendered markdown table baked in (see MyItemsFlow/ViewBugsFlow), so
-            // the agent can literally read the ids/titles/states straight out of its own history.
-            var history = _historyStore.GetOrCreate(sessionId);
-            history.Add(LlmChatMessage.User(userMessage));
-            history.Add(LlmChatMessage.Assistant(reply.Text));
+            // into the same per-session window the agent reads from (keyed by this same sessionId - see
+            // ChatController's comment on that) keeps the agent's memory a complete record of the
+            // conversation, not just the turns it happened to handle itself. The reply text already has
+            // the rendered markdown table baked in (see MyItemsFlow/ViewBugsFlow), so the agent can
+            // literally read the ids/titles/states straight out of its own history.
+            window.Add(LlmChatMessage.Assistant(reply.Text));
+            await _historyStore.SaveAsync(window, cancellationToken);
 
             return reply;
         }
@@ -92,7 +99,10 @@ public sealed class IntentRouter
         // render any richer than plain text client-side. Fixing that would mean either prompting the
         // agent to emit structured output, or having it call the same deterministic-flow builders
         // instead of writing its own prose - both bigger changes than this pass covers.
-        var agentReply = await _agent.RespondAsync(sessionId, userMessage, cancellationToken);
+        //
+        // The agent, not this router, decides whether/how to save `window` from here - see
+        // AzureBuddyAgent.RespondAsync's doc comment for why only it knows which exit is safe to persist.
+        var agentReply = await _agent.RespondAsync(window, cancellationToken);
         return EnsureNonEmpty(agentReply, ChatMessageType.Text);
     }
 
