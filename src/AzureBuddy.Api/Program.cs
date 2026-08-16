@@ -254,7 +254,7 @@ else
     dataProtectionBuilder.PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeyPath));
 }
 
-builder.Services.AddLlmProviders(builder.Configuration);
+builder.Services.AddLlmProviders(builder.Configuration, redisMultiplexer);
 builder.Services.AddAzureDevOps(builder.Configuration);
 builder.Services.AddWorkItemStates();
 builder.Services.AddChatRouting();

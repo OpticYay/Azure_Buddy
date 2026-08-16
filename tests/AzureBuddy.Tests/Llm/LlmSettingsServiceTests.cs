@@ -46,7 +46,7 @@ public class LlmSettingsServiceTests
         await dbContext.SaveChangesAsync();
 
         var settingsProvider = NewSettingsProvider();
-        var service = new LlmSettingsService(dbContext, readerProtector, settingsProvider, NullLogger<LlmSettingsService>.Instance);
+        var service = new LlmSettingsService(dbContext, readerProtector, settingsProvider, new NoOpLlmSettingsChangePublisher(), NullLogger<LlmSettingsService>.Instance);
 
         await service.LoadFromDatabaseIfPresentAsync();
 
@@ -67,7 +67,7 @@ public class LlmSettingsServiceTests
         });
         await dbContext.SaveChangesAsync();
 
-        var service = new LlmSettingsService(dbContext, readerProtector, NewSettingsProvider(), NullLogger<LlmSettingsService>.Instance);
+        var service = new LlmSettingsService(dbContext, readerProtector, NewSettingsProvider(), new NoOpLlmSettingsChangePublisher(), NullLogger<LlmSettingsService>.Instance);
 
         var view = await service.GetAsync();
 

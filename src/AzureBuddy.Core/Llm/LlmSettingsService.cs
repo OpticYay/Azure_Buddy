@@ -24,17 +24,20 @@ public sealed class LlmSettingsService
     private readonly AppDbContext _dbContext;
     private readonly LlmApiKeyProtector _apiKeyProtector;
     private readonly ILlmSettingsProvider _settingsProvider;
+    private readonly ILlmSettingsChangePublisher _changePublisher;
     private readonly ILogger<LlmSettingsService> _logger;
 
     public LlmSettingsService(
         AppDbContext dbContext,
         LlmApiKeyProtector apiKeyProtector,
         ILlmSettingsProvider settingsProvider,
+        ILlmSettingsChangePublisher changePublisher,
         ILogger<LlmSettingsService> logger)
     {
         _dbContext = dbContext;
         _apiKeyProtector = apiKeyProtector;
         _settingsProvider = settingsProvider;
+        _changePublisher = changePublisher;
         _logger = logger;
     }
 
@@ -112,6 +115,11 @@ public sealed class LlmSettingsService
         // The save that actually matters for behavior: every chat request from now on builds its
         // provider chain from this new value instead of whatever was in effect before.
         _settingsProvider.Refresh(BuildEffectiveOptions(row));
+
+        // Strictly after SaveChangesAsync: every other replica's LlmSettingsChangeNotifier reacts to
+        // this by re-reading the row from MySQL, so publishing before the commit could tell a replica
+        // to refresh before the row it's about to read even reflects the change.
+        await _changePublisher.PublishAsync(cancellationToken);
         _logger.LogInformation("LLM settings updated - providers now: {Providers}", row.ProvidersCsv);
 
         return ToView(row);
