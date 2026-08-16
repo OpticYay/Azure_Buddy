@@ -247,7 +247,7 @@ builder.Services.AddLlmProviders(builder.Configuration);
 builder.Services.AddAzureDevOps(builder.Configuration);
 builder.Services.AddWorkItemStates();
 builder.Services.AddChatRouting();
-builder.Services.AddAzureBuddyAgent();
+builder.Services.AddAzureBuddyAgent(redisMultiplexer);
 builder.Services.AddAzureBuddyAuth(builder.Configuration);
 builder.Services.AddAzureBuddyAccount();
 builder.Services.AddAdoSettings();
