@@ -18,6 +18,7 @@ using AzureBuddy.Data;
 using AzureBuddy.Data.Entities;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -293,6 +294,19 @@ builder.Services.AddAzureBuddyAccount();
 builder.Services.AddAdoSettings();
 builder.Services.AddChatHistory();
 
+// ---- Health checks ----
+// "ready" tags DatabaseHealthCheck (and RedisHealthCheck, only when Redis is configured) so
+// /health/ready reflects whether this replica can actually serve a request right now; /health/live
+// below runs no checks at all - see the two MapHealthChecks calls after the pipeline is built for why
+// that split matters for how an orchestrator should react to each one failing.
+builder.Services.AddHealthChecks()
+    .AddCheck<AzureBuddy.Api.HealthChecks.DatabaseHealthCheck>("database", tags: new[] { "ready" });
+if (redisMultiplexer is not null)
+{
+    builder.Services.AddHealthChecks()
+        .AddCheck<AzureBuddy.Api.HealthChecks.RedisHealthCheck>("redis", tags: new[] { "ready" });
+}
+
 var app = builder.Build();
 
 // ---- Admin role seeding ----
@@ -371,6 +385,21 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// AllowAnonymous is required on both: Program.cs's AuthorizationOptions.FallbackPolicy above requires
+// an authenticated user on every endpoint that doesn't opt out, and an orchestrator's health probe never
+// carries a bearer token.
+//
+// /health/live runs no checks (Predicate = _ => false) - it only proves the process is up and the
+// pipeline can complete a request, which is all a liveness probe should ask: failing it tells an
+// orchestrator to kill and restart the container, so it must never fail for a reason a restart can't
+// fix (like MySQL being briefly unreachable).
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
+
+// /health/ready runs every check tagged "ready" (DatabaseHealthCheck, and RedisHealthCheck when Redis
+// is configured) - failing it tells a load balancer to stop routing traffic to this replica without
+// restarting it, the correct reaction to "a dependency is down" rather than "this process is broken."
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }).AllowAnonymous();
 
 app.Run();
 
