@@ -6,6 +6,7 @@ using AzureBuddy.Core.Account;
 using AzureBuddy.Core.Agent;
 using AzureBuddy.Core.Auth;
 using AzureBuddy.Core.AzureDevOps;
+using AzureBuddy.Core.Caching;
 using AzureBuddy.Core.Chat;
 using AzureBuddy.Core.Common;
 using AzureBuddy.Core.Llm;
@@ -20,9 +21,33 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ---- Redis (optional) ----
+// Constructed here via a static factory - not a DI registration - because the Data Protection builder
+// further down needs the live IConnectionMultiplexer at configuration time, before the service
+// container is built. `using var` on a top-level statement disposes at the end of the implicit Main
+// method, i.e. at process shutdown (app.Run() blocks until then), so this bootstrap logger factory
+// stays alive for ConnectionFailed/ConnectionRestored events firing at any point during the run - not
+// just the ones logged during startup.
+using var redisLoggerFactory = LoggerFactory.Create(logging =>
+    logging.AddConfiguration(builder.Configuration.GetSection("Logging")).AddConsole());
+var redisMultiplexer = RedisConnectionFactory.TryCreate(builder.Configuration, redisLoggerFactory);
+if (redisMultiplexer is null)
+{
+    // Loud on purpose: dotnet run and every WebApplicationFactory-based integration test are expected
+    // to hit this path (no Redis available), so it's not an error - but a real deployment silently
+    // running single-instance with no idea why a second replica behaves incorrectly is exactly the
+    // failure mode this whole Redis effort exists to fix.
+    redisLoggerFactory.CreateLogger("AzureBuddy.Redis").LogWarning(
+        "Redis:Configuration is not set - chat history, Data Protection keys, and LLM settings changes " +
+        "stay in-memory/per-instance. This deployment cannot be scaled beyond one API replica.");
+}
+
+builder.Services.AddAzureBuddyRedis(builder.Configuration, redisMultiplexer);
 
 builder.Services.AddControllers()
     // Without this, every C# enum (ChatMessageRole, ChatMessageType) serializes as its underlying int
