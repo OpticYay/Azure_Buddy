@@ -51,16 +51,6 @@ export class MessageComposer implements OnDestroy {
    * below, so leaving it in the log too would show the same message twice. */
   readonly messageFailed = output<void>();
 
-  /** Fired the moment a text send actually goes out, carrying the text itself - lets MessageThread
-   * show the user's own message immediately instead of waiting for the round trip to finish and the
-   * whole session to reload. Paired with messageFailed below for the one case that needs undoing. */
-  readonly messageSubmitted = output<string>();
-
-  /** Fired if the text send comes back as an error, so MessageThread can drop the optimistic message
-   * it added on messageSubmitted - the text itself is already restored to the field by sendText()
-   * below, so leaving it in the log too would show the same message twice. */
-  readonly messageFailed = output<void>();
-
   // ── Why these are signals, not plain string fields ──────────────────────────────────────────────
   // This app runs ZONELESS (there's no zone.js dependency - Angular 22's default). Zoneless change
   // detection only re-renders when something it actually watches changes: a signal write, an event
