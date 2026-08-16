@@ -25,33 +25,12 @@ export interface CurrentUser {
   roles: string[];
 }
 
-// ── What is a "service" in Angular, and why is this decorated with @Injectable? ────────────────────
-// A service is just a plain TypeScript class that holds logic/state you want to SHARE across multiple
-// components, instead of each component reimplementing it (or worse, duplicating "who's logged in"
-// state in five different places that could disagree with each other). `@Injectable({ providedIn: 'root' })`
-// registers this class with Angular's dependency-injection system (introduced in app.config.ts) as a
-// single, app-wide instance ("singleton") - every component or other service that asks for an
-// AuthService via its constructor gets the exact same instance, so they all see the same login state.
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  // ── What is a signal? ──────────────────────────────────────────────────────────────────────────
-  // A signal is a container around a value that Angular can watch. When you call `.set(...)` on one,
-  // Angular knows *exactly* which parts of the UI read that signal (via `.set()` calls being tracked)
-  // and automatically re-renders only those parts - you never manually push a DOM update yourself the
-  // way older frameworks required. Contrast this with a plain TypeScript variable: if you did
-  // `let accessToken = null` and later reassigned it, nothing watching that variable would know it
-  // changed, and the screen simply wouldn't update.
-  //
-  // This one holds the current JWT access token in memory ONLY (see the class-level comment below for
-  // why not localStorage). `signal<string | null>(null)` means "a signal whose value is either a
-  // string or null, starting out null" - TypeScript's `|` here is a union type, "one of these types."
+  // Holds the current JWT access token in memory ONLY - see applySession's comment for why not
+  // localStorage.
   private readonly accessToken = signal<string | null>(null);
 
-  // A "computed" signal derives its value from other signals and automatically recalculates whenever
-  // any signal it reads from changes - you never manually keep it in sync. Here: whenever accessToken
-  // changes, currentUser recomputes by decoding the new token's claims (or becomes null if logged out).
-  // `computed()` producing a *readonly* signal (no `.set()` on it) is intentional - the only way to
-  // change who's "current user" is by changing accessToken, not by setting currentUser directly.
   readonly currentUser = computed<CurrentUser | null>(() => {
     const token = this.accessToken();
     return token ? decodeAccessTokenClaims(token) : null;
@@ -64,26 +43,14 @@ export class AuthService {
    * the answer already arrived encoded in the JWT the moment the user logged in. */
   readonly isAdmin = computed(() => this.currentUser()?.roles.includes('Admin') ?? false);
 
-  // Multiple HTTP requests can 401 around the same moment (e.g. a page that fires 3 API calls on
-  // load, all with an expired token). Without this, each one would independently kick off its own
+  // Multiple HTTP requests can 401 around the same moment (e.g. a page firing 3 API calls on load,
+  // all with an expired token). Without this, each would independently kick off its own
   // POST /api/auth/refresh - wasteful, and could even race and invalidate each other's new tokens.
-  // This field remembers an in-flight refresh call so every 401 can share the SAME one; see
-  // refreshAccessToken() below for how it's used, and the auth interceptor for who calls it.
+  // This field remembers an in-flight refresh call so every 401 can share the SAME one.
   private refreshInFlight$: Observable<AuthTokens> | null = null;
 
   constructor(private readonly http: HttpClient) {}
 
-  // ── Why does an HTTP call return an Observable instead of a Promise? ───────────────────────────
-  // A Promise represents ONE eventual value and starts running the moment it's created. An Observable
-  // is more like a subscription: nothing happens until something calls `.subscribe(...)` on it (this
-  // is called being "cold" - the HTTP request literally isn't sent until you subscribe), and it can
-  // represent zero, one, or many values over time, plus be cancelled mid-flight (e.g. if a user
-  // navigates away before a request finishes, Angular's router can unsubscribe and abort it - a
-  // Promise can never be cancelled once started). Angular's HttpClient uses Observables for exactly
-  // this cancellability, and because `.pipe(...)` lets you compose operators (retry, map, catchError,
-  // combine-with-another-request, etc.) declaratively, which is awkward with Promises/async-await.
-  // Signals, by contrast, are for SYNCHRONOUS state you read at any time (no "subscribe" needed) -
-  // that's why the token itself is a signal, but the network call to fetch a new one is an Observable.
   register(request: RegisterRequest): Observable<AuthTokens> {
     return this.http
       .post<AuthTokens>(`${environment.apiUrl}/api/auth/register`, request)
@@ -134,12 +101,8 @@ export class AuthService {
     }
 
     return this.refreshAccessToken().pipe(
-      // `map` transforms each emitted value - here we don't care about the tokens themselves (that's
-      // already been handled by refreshAccessToken's own `tap`), just that the call finished, so we
-      // map the result to `undefined` to match this method's `Observable<void>` return type.
       map(() => undefined),
-      // Swallow any error too - a failed silent refresh should look like "not logged in," not crash
-      // app boot.
+      // A failed silent refresh should look like "not logged in," not crash app boot.
       catchError(() => of(undefined)),
     );
   }
@@ -154,11 +117,9 @@ export class AuthService {
       return throwError(() => new Error('No refresh token available.'));
     }
 
-    // `shareReplay(1)` is what makes the de-duplication described above work: normally each new
-    // `.subscribe()` on an Observable re-runs everything from scratch (a second HTTP call). shareReplay
-    // instead runs the source ONCE and replays that same result to every subscriber. `finalize` clears
-    // refreshInFlight$ once the call settles (success or failure) so the *next* 401, later, correctly
-    // starts a new refresh instead of replaying a stale one forever.
+    // `shareReplay(1)` runs the source ONCE and replays that result to every subscriber, which is what
+    // makes the de-duplication above work. `finalize` clears refreshInFlight$ once the call settles so
+    // the *next* 401, later, correctly starts a new refresh instead of replaying a stale one forever.
     this.refreshInFlight$ = this.http
       .post<AuthTokens>(`${environment.apiUrl}/api/auth/refresh`, { refreshToken: storedRefreshToken })
       .pipe(

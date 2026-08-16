@@ -2,6 +2,7 @@ using AzureBuddy.Core.Llm.Providers.Gemini;
 using AzureBuddy.Core.Llm.Providers.Ollama;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using StackExchange.Redis;
 
 namespace AzureBuddy.Core.Llm;
 
@@ -25,7 +26,11 @@ public static class LlmServiceCollectionExtensions
     /// request kept using the stale chain built at startup. Scoped (one instance per HTTP request)
     /// means this factory - and therefore ILlmSettingsProvider.Current - is read fresh on every request.
     /// </summary>
-    public static IServiceCollection AddLlmProviders(this IServiceCollection services, IConfiguration configuration)
+    /// <param name="multiplexer">Same null-means-"Redis not configured" instance Program.cs threads
+    /// through AddAzureBuddyRedis/AddAzureBuddyAgent. Determines whether LLM settings saves publish a
+    /// change notification other replicas can react to (RedisLlmSettingsChangePublisher) or simply do
+    /// nothing beyond this replica's own Refresh() call (NoOpLlmSettingsChangePublisher).</param>
+    public static IServiceCollection AddLlmProviders(this IServiceCollection services, IConfiguration configuration, IConnectionMultiplexer? multiplexer)
     {
         services.Configure<LlmOptions>(configuration.GetSection(LlmOptions.SectionName));
 
@@ -35,6 +40,16 @@ public static class LlmServiceCollectionExtensions
         services.AddSingleton<ILlmSettingsProvider, LlmSettingsProvider>();
         services.AddScoped<LlmApiKeyProtector>();
         services.AddScoped<LlmSettingsService>();
+
+        if (multiplexer is not null)
+        {
+            services.AddSingleton<ILlmSettingsChangePublisher, RedisLlmSettingsChangePublisher>();
+        }
+        else
+        {
+            services.AddSingleton<ILlmSettingsChangePublisher, NoOpLlmSettingsChangePublisher>();
+        }
+        services.AddHostedService<LlmSettingsChangeNotifier>();
 
         // HttpClient.Timeout defaults to 100 seconds, and it is enforced independently of (and wins
         // against) the per-request CancellationTokenSource each client sets from its configured

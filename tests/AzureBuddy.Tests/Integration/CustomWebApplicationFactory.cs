@@ -1,13 +1,18 @@
+using AzureBuddy.Core.Agent;
 using AzureBuddy.Core.Auth;
 using AzureBuddy.Core.AzureDevOps;
+using AzureBuddy.Core.Caching;
+using AzureBuddy.Core.Llm;
 using AzureBuddy.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using DotNet.Testcontainers.Containers;
 using MySqlConnector;
+using StackExchange.Redis;
 using Testcontainers.MySql;
 
 namespace AzureBuddy.Tests.Integration;
@@ -32,11 +37,49 @@ namespace AzureBuddy.Tests.Integration;
 /// </summary>
 public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-    private readonly string _databaseName = $"azurebuddy_test_{Guid.NewGuid():N}";
+    private readonly string _databaseName;
+    private readonly bool _useRedis;
+    private readonly string _redisInstanceName;
     private string _connectionString = string.Empty;
+    private IConnectionMultiplexer? _redisMultiplexer;
 
     public FakeAdoClient AdoClient { get; } = new();
     public FakeEmailSender EmailSender { get; } = new();
+    public FakeChatCompletionClient ChatClient { get; } = new();
+
+    // Must stay parameterless: xUnit requires every IClassFixture type to have exactly one public
+    // constructor AND instantiates it itself via reflection with no arguments, so even an optional
+    // `bool useRedis = false` parameter here breaks every IClassFixture<CustomWebApplicationFactory>
+    // test class in the suite ("unresolved constructor arguments: Boolean useRedis"). CreateWithRedis
+    // and CreateReplicaOf below are the public entry points for every other case.
+    public CustomWebApplicationFactory() : this($"azurebuddy_test_{Guid.NewGuid():N}", string.Empty, useRedis: false, $"test:{Guid.NewGuid():N}:")
+    {
+    }
+
+    private CustomWebApplicationFactory(string databaseName, string connectionString, bool useRedis, string redisInstanceName)
+    {
+        _databaseName = databaseName;
+        _connectionString = connectionString;
+        _useRedis = useRedis;
+        _redisInstanceName = redisInstanceName;
+    }
+
+    /// <summary>Like `new CustomWebApplicationFactory()`, but IChatHistoryStore is backed by a real
+    /// Redis container (SharedRedisContainer) instead of the process-local in-memory fallback - needed
+    /// by any test that wants to prove behavior that only exists when Redis is configured, e.g.
+    /// cross-replica chat continuity (see CreateReplicaOf below).</summary>
+    public static CustomWebApplicationFactory CreateWithRedis() =>
+        new($"azurebuddy_test_{Guid.NewGuid():N}", string.Empty, useRedis: true, $"test:{Guid.NewGuid():N}:");
+
+    /// <summary>
+    /// Builds a second host that shares <paramref name="shareInfraWith"/>'s database and (when that
+    /// factory was created via CreateWithRedis) its Redis key prefix, so the two factories behave like
+    /// two replicas of the SAME deployment behind a load balancer rather than two unrelated tests'
+    /// isolated infra. <paramref name="shareInfraWith"/> must already have completed InitializeAsync
+    /// before this is called, since that's what populates the database connection string being copied here.
+    /// </summary>
+    public static CustomWebApplicationFactory CreateReplicaOf(CustomWebApplicationFactory shareInfraWith) =>
+        new(shareInfraWith._databaseName, shareInfraWith._connectionString, shareInfraWith._useRedis, shareInfraWith._redisInstanceName);
 
     /// <summary>
     /// Runs once per CustomWebApplicationFactory instance (i.e. once per test class that uses
@@ -58,16 +101,34 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
     /// </summary>
     public async Task InitializeAsync()
     {
-        var container = await SharedMySqlContainer.GetAsync();
-        _connectionString = await CreateIsolatedDatabaseAsync(container, _databaseName);
+        // A blank _connectionString means this is either the first factory to touch _databaseName, or
+        // a standalone factory that isn't sharing infra with anyone - either way it owns creating and
+        // migrating the database. A factory built via the infra-sharing constructor already has this
+        // populated (copied from the factory it shares with), so it skips straight past both: the
+        // database already exists and was already migrated by whichever factory created it first.
+        if (string.IsNullOrEmpty(_connectionString))
+        {
+            var container = await SharedMySqlContainer.GetAsync();
+            _connectionString = await CreateIsolatedDatabaseAsync(container, _databaseName);
 
-        var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>()
-            .UseMySql(_connectionString, new MySqlServerVersion(new Version(8, 0, 34)));
-        await using var dbContext = new AppDbContext(optionsBuilder.Options);
-        await dbContext.Database.MigrateAsync();
+            var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>()
+                .UseMySql(_connectionString, new MySqlServerVersion(new Version(8, 0, 34)));
+            await using var dbContext = new AppDbContext(optionsBuilder.Options);
+            await dbContext.Database.MigrateAsync();
+        }
+
+        if (_useRedis)
+        {
+            var redisContainer = await SharedRedisContainer.GetAsync();
+            _redisMultiplexer = await ConnectionMultiplexer.ConnectAsync(redisContainer.GetConnectionString());
+        }
     }
 
-    Task IAsyncLifetime.DisposeAsync() => Task.CompletedTask;
+    Task IAsyncLifetime.DisposeAsync()
+    {
+        _redisMultiplexer?.Dispose();
+        return Task.CompletedTask;
+    }
 
     /// <summary>
     /// Test isolation strategy: rather than wrapping each test in a rolled-back transaction (this
@@ -140,6 +201,22 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
             services.RemoveAll<IEmailSender>();
             services.AddSingleton<IEmailSender>(EmailSender);
+
+            services.RemoveAll<IChatCompletionClient>();
+            services.AddSingleton<IChatCompletionClient>(ChatClient);
+
+            if (_useRedis)
+            {
+                // RedisOptions.InstanceName is init-only, so it can't be mutated through Configure<T>'s
+                // Action<T> delegate - registering our own IOptions<RedisOptions> singleton after
+                // Program.cs's own config-bound one is what actually wins, since DI resolves the LAST
+                // registration for a non-keyed, non-IEnumerable dependency.
+                services.AddSingleton<IOptions<RedisOptions>>(Options.Create(new RedisOptions { InstanceName = _redisInstanceName }));
+                services.RemoveAll<IConnectionMultiplexer>();
+                services.AddSingleton(_redisMultiplexer!);
+                services.RemoveAll<IChatHistoryStore>();
+                services.AddScoped<IChatHistoryStore, RedisChatHistoryStore>();
+            }
         });
     }
 

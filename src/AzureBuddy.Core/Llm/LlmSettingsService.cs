@@ -24,17 +24,20 @@ public sealed class LlmSettingsService
     private readonly AppDbContext _dbContext;
     private readonly LlmApiKeyProtector _apiKeyProtector;
     private readonly ILlmSettingsProvider _settingsProvider;
+    private readonly ILlmSettingsChangePublisher _changePublisher;
     private readonly ILogger<LlmSettingsService> _logger;
 
     public LlmSettingsService(
         AppDbContext dbContext,
         LlmApiKeyProtector apiKeyProtector,
         ILlmSettingsProvider settingsProvider,
+        ILlmSettingsChangePublisher changePublisher,
         ILogger<LlmSettingsService> logger)
     {
         _dbContext = dbContext;
         _apiKeyProtector = apiKeyProtector;
         _settingsProvider = settingsProvider;
+        _changePublisher = changePublisher;
         _logger = logger;
     }
 
@@ -112,6 +115,11 @@ public sealed class LlmSettingsService
         // The save that actually matters for behavior: every chat request from now on builds its
         // provider chain from this new value instead of whatever was in effect before.
         _settingsProvider.Refresh(BuildEffectiveOptions(row));
+
+        // Strictly after SaveChangesAsync: every other replica's LlmSettingsChangeNotifier reacts to
+        // this by re-reading the row from MySQL, so publishing before the commit could tell a replica
+        // to refresh before the row it's about to read even reflects the change.
+        await _changePublisher.PublishAsync(cancellationToken);
         _logger.LogInformation("LLM settings updated - providers now: {Providers}", row.ProvidersCsv);
 
         return ToView(row);
@@ -145,7 +153,12 @@ public sealed class LlmSettingsService
             // Decrypted here, in memory, and handed straight to ILlmSettingsProvider - never logged,
             // never part of any HTTP response. GeminiChatClient reads it back out the same way any
             // config value would be read; there is no second copy of the plaintext anywhere.
-            ApiKey = row.GeminiEncryptedApiKey is null ? string.Empty : _apiKeyProtector.Decrypt(row.GeminiEncryptedApiKey),
+            //
+            // Goes through DecryptSafely, not a raw Decrypt call: this method runs both at app startup
+            // (LoadFromDatabaseIfPresentAsync) and on every settings save, and a lost/rotated Data
+            // Protection key ring must not crash either - it should just mean "this provider falls back
+            // to no API key" rather than an unhandled CryptographicException taking down startup.
+            ApiKey = row.GeminiEncryptedApiKey is null ? string.Empty : DecryptSafely(row.GeminiEncryptedApiKey),
             Model = row.GeminiModel,
             BaseUrl = row.GeminiBaseUrl,
             TimeoutSeconds = row.GeminiTimeoutSeconds,

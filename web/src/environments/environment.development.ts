@@ -1,7 +1,4 @@
-// This file is used automatically when you run `ng serve` (the "development" configuration).
-// Angular's build system swaps this file in for environment.ts at build time via the
-// "fileReplacements" entry in angular.json - so the rest of the app just imports "./environments/environment"
-// and never has to know which one is actually active.
+// Swapped in for environment.ts at build time via the "fileReplacements" entry in angular.json.
 //
 // IMPORTANT: confirm this matches the port your API is actually running on. This project's
 // src/AzureBuddy.Api/Properties/launchSettings.json defines an "http" profile on port 5013 - if you

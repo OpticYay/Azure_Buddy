@@ -75,7 +75,10 @@ public sealed class UserAdoConfigService
 
     /// <summary>Decrypts the stored PAT and builds the AdoConnectionContext every ADO call needs.
     /// Returns null if the user hasn't configured ADO yet - callers (e.g. ChatController) turn that
-    /// into a clear "configure your ADO settings first" response rather than a confusing 500.</summary>
+    /// into a clear "configure your ADO settings first" response rather than a confusing 500. A stored
+    /// PAT that fails to decrypt (lost/rotated Data Protection key ring) is surfaced the same way,
+    /// via AdoNotConfiguredException - ChatController already has a handler for that exact case, so
+    /// this call site doesn't need its own try/catch on top of TestConnectionAsync's.</summary>
     public async Task<AdoConnectionContext?> GetConnectionContextAsync(string userId, CancellationToken cancellationToken = default)
     {
         var settings = await FindByUserAsync(userId, cancellationToken);
@@ -84,18 +87,27 @@ public sealed class UserAdoConfigService
             return null;
         }
 
-        return new AdoConnectionContext(settings.OrganizationUrl, settings.DefaultProject, _patProtector.Decrypt(settings.EncryptedPat));
+        try
+        {
+            return new AdoConnectionContext(settings.OrganizationUrl, settings.DefaultProject, _patProtector.Decrypt(settings.EncryptedPat));
+        }
+        catch (CryptographicException ex)
+        {
+            _logger.LogWarning(ex, "Could not decrypt stored ADO PAT for user {UserId} - key ring may have rotated.", userId);
+            throw new AdoNotConfiguredException("Your stored Azure DevOps token could not be read - please re-enter your PAT.");
+        }
     }
 
     public async Task<TestConnectionResult> TestConnectionAsync(string userId, CancellationToken cancellationToken = default)
     {
-        // Everything that can fail here - decrypting the stored PAT, and the ADO call itself - is
-        // inside this one try. Previously only AdoApiException was caught, which meant a network
-        // failure (DNS, unreachable host, or the Polly retry policy giving up and rethrowing the
-        // original HttpRequestException/TaskCanceledException - AdoClient.TestConnectionAsync doesn't
-        // route through ReadOrThrowAsync, the only place that translates failures into AdoApiException)
-        // or a lost Data Protection key ring would throw straight through this method as an unhandled
-        // exception, producing a bare 500 instead of a clean TestConnectionResult(false, ...).
+        // Everything that can fail here - decrypting the stored PAT (via GetConnectionContextAsync,
+        // which now raises AdoNotConfiguredException rather than a raw CryptographicException), and
+        // the ADO call itself - is inside this one try. Previously only AdoApiException was caught,
+        // which meant a network failure (DNS, unreachable host, or the Polly retry policy giving up and
+        // rethrowing the original HttpRequestException/TaskCanceledException - AdoClient.TestConnectionAsync
+        // doesn't route through ReadOrThrowAsync, the only place that translates failures into
+        // AdoApiException) would throw straight through this method as an unhandled exception,
+        // producing a bare 500 instead of a clean TestConnectionResult(false, ...).
         try
         {
             var context = await GetConnectionContextAsync(userId, cancellationToken);
@@ -109,16 +121,18 @@ public sealed class UserAdoConfigService
                 ? new TestConnectionResult(true, null)
                 : new TestConnectionResult(false, "Azure DevOps rejected the request - check the organization URL, project name, and PAT.");
         }
-        catch (Exception ex) when (ex is AdoApiException or HttpRequestException or TaskCanceledException or CryptographicException)
+        catch (Exception ex) when (ex is AdoApiException or HttpRequestException or TaskCanceledException or AdoNotConfiguredException)
         {
             _logger.LogWarning(ex, "ADO test-connection failed for user {UserId}.", userId);
             return new TestConnectionResult(false, DescribeFailure(ex));
         }
     }
 
+    // AdoNotConfiguredException (raised by GetConnectionContextAsync when the stored PAT fails to
+    // decrypt) already carries a clear, user-facing message, so it falls through to the default case
+    // below rather than needing its own arm here.
     private static string DescribeFailure(Exception ex) => ex switch
     {
-        CryptographicException => "Your stored Azure DevOps token could not be read - please re-enter your PAT.",
         HttpRequestException or TaskCanceledException => "Could not reach Azure DevOps - check the organization URL and your network connection.",
         _ => ex.Message
     };

@@ -4,18 +4,6 @@ import { authGuard } from './core/guards/auth-guard';
 import { redirectIfAuthenticatedGuard } from './core/guards/redirect-if-authenticated-guard';
 import { adminGuard } from './core/guards/admin-guard';
 
-/**
- * This array is Angular's "route table": it maps a URL path to the component that should be shown
- * when the browser is at that URL. The Angular Router reads this once at startup and then, every time
- * the URL changes (either the user clicking a link, or code calling `router.navigate(...)`), swaps
- * out whatever's inside the nearest `<router-outlet>` in the template for the matching component -
- * without a full page reload, which is what makes this a "single-page application" (SPA).
- *
- * `loadComponent` (instead of a plain `component: Login`) tells the Angular build tool to put Login's
- * JS code in its own separate file, only downloaded by the browser the first time someone actually
- * navigates to /login - this is called "lazy loading" and keeps the initial page load small, since a
- * QA engineer opening the chat page doesn't need to also download the settings-screen code up front.
- */
 export const routes: Routes = [
   {
     path: 'login',
@@ -63,9 +51,8 @@ export const routes: Routes = [
         loadComponent: () => import('./features/chat/chat-page/chat-page').then((m) => m.ChatPage),
       },
       {
-        // Same component as above, reused for viewing one specific past session - ChatPage reads the
-        // :sessionId route parameter itself to know whether it's showing a specific session or the
-        // "nothing selected yet" empty state. See Piece 4/5 for how it reads that parameter.
+        // Same component as above; ChatPage reads the :sessionId param itself to know whether it's
+        // showing a specific session or the "nothing selected yet" empty state.
         path: 'chat/:sessionId',
         loadComponent: () => import('./features/chat/chat-page/chat-page').then((m) => m.ChatPage),
       },
@@ -96,6 +83,5 @@ export const routes: Routes = [
       { path: '', pathMatch: 'full', redirectTo: 'chat' },
     ],
   },
-  // Catch-all: any URL that matched nothing above sends the user back to the chat page.
   { path: '**', redirectTo: 'chat' },
 ];

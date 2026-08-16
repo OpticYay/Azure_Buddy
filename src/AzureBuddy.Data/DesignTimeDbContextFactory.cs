@@ -17,9 +17,9 @@ public sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<App
             .AddJsonFile("appsettings.Development.json", optional: true)
             .Build();
 
-        var connectionString = configuration.GetConnectionString("Default")
+        var connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException(
-                "No 'Default' connection string found in appsettings.json/appsettings.Development.json.");
+                "No 'DefaultConnection' connection string found in appsettings.json/appsettings.Development.json.");
 
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
         optionsBuilder.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 34)));

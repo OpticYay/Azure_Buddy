@@ -1,14 +1,5 @@
 import { animate, query, stagger, state, style, transition, trigger } from '@angular/animations';
 
-// ── What @angular/animations is, and why not just a CSS transition ──────────────────────────────
-// A CSS `transition` animates a property changing value while the element stays in the DOM. It
-// cannot animate an element being ADDED or REMOVED, because by the time Angular removes it there is
-// nothing left to transition. Angular's animation system hooks into the framework's own lifecycle:
-// it knows an element is about to be inserted or destroyed, and can delay the actual removal until
-// the animation finishes. `trigger(name, [...])` bundles rules under a name a template attaches with
-// `[@name]`; `:enter` / `:leave` are Angular's aliases for those two moments (not real CSS
-// pseudo-classes). `state(...)` names a persistent state to transition between.
-//
 // Motion here is deliberately sparse. The design's boldness is spent on the log format and the
 // brass work item stamp; animation's whole job is to make state changes legible, not to decorate.
 

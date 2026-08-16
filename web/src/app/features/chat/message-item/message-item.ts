@@ -4,20 +4,10 @@ import { DatePipe } from '@angular/common';
 import { DisplayMessage } from '../../../core/models/display-message.model';
 import { MarkdownLitePipe } from '../../../shared/markdown-lite.pipe';
 
-// ── What a component input is ───────────────────────────────────────────────────────────────────
-// Most components in this app manage their own state - they fetch their own data and own their own
-// signals. This one is pure presentation: MessageThread renders one <app-message-item> per message
-// and hands each its data through attribute-style bindings:
-//     <app-message-item [displayMessage]="msg" [adoWorkItemBaseUrl]="url()" />
-// `input.required<T>()` means the component cannot be used without that value being passed (Angular
-// enforces it at compile time); `input<T>(default)` declares an optional one.
-//
-// ── Why this renders a log entry rather than a chat bubble ──────────────────────────────────────
-// The backend tags every message with a real type - Text, Table, Confirmation or Error (see
-// ChatMessageType) - because deterministic flows know exactly what they produced. The most valuable
-// of those are a results table and a "work item #123 recorded" confirmation, and neither belongs
-// inside a speech balloon. So the thread is set as a typed log: each entry carries a role, a state
-// tag, and a timestamp, and the structured payloads sit in it naturally.
+// This renders as a typed log entry rather than a chat bubble: the backend tags every message with a
+// real type (Text, Table, Confirmation, Error - see ChatMessageType), and the most valuable of those
+// are a results table and a "work item #123 recorded" confirmation, neither of which belongs inside a
+// speech balloon. Each entry instead carries a role, a state tag, and a timestamp.
 @Component({
   selector: 'app-message-item',
   imports: [DatePipe, MarkdownLitePipe],

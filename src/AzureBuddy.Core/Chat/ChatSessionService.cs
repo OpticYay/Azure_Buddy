@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AzureBuddy.Core.Agent;
 using AzureBuddy.Core.AzureDevOps;
 using AzureBuddy.Data;
 using AzureBuddy.Data.Entities;
@@ -21,17 +22,20 @@ public sealed class ChatSessionService
     private readonly AppDbContext _dbContext;
     private readonly IAdoAttachmentService _adoAttachmentService;
     private readonly AdoConnectionContextAccessor _connectionAccessor;
+    private readonly IChatHistoryStore _historyStore;
     private readonly ILogger<ChatSessionService> _logger;
 
     public ChatSessionService(
         AppDbContext dbContext,
         IAdoAttachmentService adoAttachmentService,
         AdoConnectionContextAccessor connectionAccessor,
+        IChatHistoryStore historyStore,
         ILogger<ChatSessionService> logger)
     {
         _dbContext = dbContext;
         _adoAttachmentService = adoAttachmentService;
         _connectionAccessor = connectionAccessor;
+        _historyStore = historyStore;
         _logger = logger;
     }
 
@@ -129,6 +133,12 @@ public sealed class ChatSessionService
 
         _dbContext.ChatSessions.RemoveRange(empty);
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        foreach (var session in empty)
+        {
+            await EvictHistorySafelyAsync(session.Id, cancellationToken);
+        }
+
         return empty.Count;
     }
 
@@ -148,7 +158,26 @@ public sealed class ChatSessionService
         // messages in the same transaction.
         _dbContext.ChatSessions.Remove(session);
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await EvictHistorySafelyAsync(session.Id, cancellationToken);
         return true;
+    }
+
+    /// <summary>Runs strictly AFTER the MySQL delete has already committed, and never lets a store
+    /// failure fail the delete itself - guids aren't reused, so a stale cache entry here is a privacy/
+    /// memory concern (the deleted conversation's text sits around until its TTL), not a correctness
+    /// one. Only matters once a real distributed store (Redis) is in play; the in-memory store's evict
+    /// can't meaningfully fail, but the guard costs nothing and keeps this call site right for later.</summary>
+    private async Task EvictHistorySafelyAsync(Guid sessionId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _historyStore.EvictAsync(sessionId.ToString(), cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to evict chat history cache for deleted session {SessionId}.", sessionId);
+        }
     }
 
     /// <summary>Appends a plain text message (no screenshot) - e.g. the assistant's reply, or a user

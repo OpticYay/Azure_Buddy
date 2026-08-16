@@ -71,13 +71,13 @@ public sealed class AzureBuddyAgent : IConversationalAgent
         """;
 
     private readonly IChatCompletionClient _chatClient;
-    private readonly ChatHistoryStore _historyStore;
+    private readonly IChatHistoryStore _historyStore;
     private readonly ToolCatalog _toolCatalog;
     private readonly ILogger<AzureBuddyAgent> _logger;
 
     public AzureBuddyAgent(
         IChatCompletionClient chatClient,
-        ChatHistoryStore historyStore,
+        IChatHistoryStore historyStore,
         ToolCatalog toolCatalog,
         ILogger<AzureBuddyAgent> logger)
     {
@@ -87,20 +87,27 @@ public sealed class AzureBuddyAgent : IConversationalAgent
         _logger = logger;
     }
 
-    public async Task<string> RespondAsync(string sessionId, string userMessage, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// The window arrives already carrying this turn's user message - IntentRouter.RouteAsync adds it
+    /// (via ChatSessionWindow.AddUserTurn) once, above the fork between the deterministic-flow path and
+    /// this one, so both paths see identical "has the user turn been recorded" state.
+    ///
+    /// This method - not IntentRouter - decides whether/when to save, because only it knows which of
+    /// its three exits actually produced something worth persisting. A try/finally is deliberately NOT
+    /// used here: two of the three exits below must NOT save, and a finally-based "simplification"
+    /// would persist exactly the poisoned states those comments explain.
+    /// </summary>
+    public async Task<string> RespondAsync(ChatSessionWindow window, CancellationToken cancellationToken = default)
     {
-        var history = _historyStore.GetOrCreate(sessionId);
-        // Checked by role, not `Messages.Count == 0`: a deterministic flow (see IntentRouter) can
-        // record user/assistant turns into this same history before the agent is ever invoked in a
-        // session, so the count can already be nonzero the first time we get here. ChatHistory.Trim()
-        // always keeps the system message first regardless of when it was added, so adding it late
-        // here still produces a correctly-ordered history for the provider.
-        if (!history.Messages.Any(m => m.Role == ChatRole.System))
+        // Checked by role, not `Messages.Count == 0`: IntentRouter's AddUserTurn already added this
+        // turn's user message before calling in here, so the count is never zero by this point. More
+        // importantly, a window rehydrated from MySQL (see DbChatHistorySource) NEVER contains a System
+        // message - ChatMessageRole in the database has only User/Assistant - so this is what rebuilds
+        // the system prompt after every cache miss, not just on a session's first-ever turn.
+        if (!window.Messages.Any(m => m.Role == ChatRole.System))
         {
-            history.Add(ChatMessage.System(SystemPrompt));
+            window.Add(ChatMessage.System(SystemPrompt));
         }
-
-        history.Add(ChatMessage.User(userMessage));
 
         var tools = _toolCatalog.GetTools();
         var toolDefinitions = tools.Select(t => t.Definition).ToList();
@@ -111,31 +118,43 @@ public sealed class AzureBuddyAgent : IConversationalAgent
             ChatCompletionResult result;
             try
             {
-                result = await _chatClient.CompleteAsync(history, toolDefinitions, cancellationToken);
+                result = await _chatClient.CompleteAsync(window.ToChatHistory(), toolDefinitions, cancellationToken);
             }
             catch (ChatCompletionProviderException ex)
             {
-                _logger.LogError(ex, "All LLM providers failed while responding to session {SessionId}.", sessionId);
+                _logger.LogError(ex, "All LLM providers failed while responding to session {SessionId}.", window.SessionId);
+                // Do NOT save: the window may already carry earlier rounds' Assistant-with-ToolCalls
+                // messages with no matching Tool result, a shape every provider rejects on the next
+                // turn. The user's own message is already durable in MySQL regardless of this failure.
                 return string.Empty;
             }
 
             if (result.FinishReason != ChatFinishReason.ToolCalls || result.ToolCalls is not { Count: > 0 })
             {
-                history.Add(ChatMessage.Assistant(result.Text ?? string.Empty));
+                window.Add(ChatMessage.Assistant(result.Text ?? string.Empty));
+                // Save immediately: this is the normal, successful exit, and it's the only one of the
+                // three where the window is guaranteed to end on a complete, well-formed turn.
+                await _historyStore.SaveAsync(window, cancellationToken);
                 return result.Text ?? string.Empty;
             }
 
-            history.Add(new ChatMessage { Role = ChatRole.Assistant, Content = result.Text, ToolCalls = result.ToolCalls });
+            window.Add(new ChatMessage { Role = ChatRole.Assistant, Content = result.Text, ToolCalls = result.ToolCalls });
 
             foreach (var toolCall in result.ToolCalls)
             {
                 var toolResult = await InvokeToolAsync(toolCall, toolsByName, cancellationToken);
-                history.Add(ChatMessage.ToolResult(toolCall.Id, toolCall.Name, toolResult));
+                window.Add(ChatMessage.ToolResult(toolCall.Id, toolCall.Name, toolResult));
             }
         }
 
-        _logger.LogWarning("Session {SessionId} exceeded max tool-call rounds ({MaxRounds}).", sessionId, MaxToolCallRounds);
-        return "I wasn't able to complete that request after several tool calls - could you rephrase or simplify it?";
+        _logger.LogWarning("Session {SessionId} exceeded max tool-call rounds ({MaxRounds}).", window.SessionId, MaxToolCallRounds);
+        const string cannedReply = "I wasn't able to complete that request after several tool calls - could you rephrase or simplify it?";
+        // CollapseFailedTurn rewinds past up to MaxToolCallRounds of dead tool-calling scaffolding,
+        // keeping only the user's own message, before this save - so a chain of failed rounds doesn't
+        // occupy the whole 15-slot window going forward.
+        window.CollapseFailedTurn(cannedReply);
+        await _historyStore.SaveAsync(window, cancellationToken);
+        return cannedReply;
     }
 
     private async Task<string> InvokeToolAsync(

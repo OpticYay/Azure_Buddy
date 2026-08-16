@@ -19,7 +19,7 @@ namespace AzureBuddy.Api.Controllers;
 [Authorize]
 public sealed class ChatsController : ControllerBase
 {
-    private const long MaxScreenshotBytes = 10 * 1024 * 1024; // 10 MB
+    private const long MaxScreenshotBytes = 10 * 1024 * 1024;
 
     private readonly ChatSessionService _chatSessionService;
     private readonly UserAdoConfigService _adoConfigService;

@@ -22,15 +22,9 @@ const STARTERS = [
   'File a bug against ',
 ];
 
-// ── What is effect(), and how is it different from computed()? ─────────────────────────────────────
-// `computed()` (used back in AuthService for `currentUser`) DERIVES a new signal value from other
-// signals - it's for producing a value to read. `effect()` instead RUNS A SIDE EFFECT whenever any
-// signal it reads changes - it produces no value, it just does something (here: fetch new data from
-// the server). We need an effect (not just ngOnInit) because this component's `sessionId` INPUT can
-// change without the component itself being destroyed and recreated - see chat-page.ts: ChatPage stays
-// mounted across /chat/:id1 -> /chat/:id2 navigations (only the route parameter changes), so
-// MessageThread stays mounted too, and ngOnInit (which only ever runs once) would never notice the
-// user switched sessions. An effect re-runs automatically every time `this.sessionId()` changes.
+// Uses effect(), not ngOnInit, because this component's `sessionId` input can change without the
+// component itself being destroyed and recreated (ChatPage stays mounted across /chat/:id1 ->
+// /chat/:id2 navigations), and ngOnInit only ever runs once.
 @Component({
   selector: 'app-message-thread',
   imports: [MessageItem, MessageComposer, TypingIndicator],

@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -6,6 +7,7 @@ using AzureBuddy.Core.Account;
 using AzureBuddy.Core.Agent;
 using AzureBuddy.Core.Auth;
 using AzureBuddy.Core.AzureDevOps;
+using AzureBuddy.Core.Caching;
 using AzureBuddy.Core.Chat;
 using AzureBuddy.Core.Common;
 using AzureBuddy.Core.Llm;
@@ -16,15 +18,39 @@ using AzureBuddy.Data;
 using AzureBuddy.Data.Entities;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// ---- Redis (optional) ----
+// Constructed here via a static factory - not a DI registration - because the Data Protection builder
+// further down needs the live IConnectionMultiplexer at configuration time, before the service
+// container is built. `using var` on a top-level statement disposes at the end of the implicit Main
+// method, i.e. at process shutdown (app.Run() blocks until then), so this bootstrap logger factory
+// stays alive for ConnectionFailed/ConnectionRestored events firing at any point during the run - not
+// just the ones logged during startup.
+using var redisLoggerFactory = LoggerFactory.Create(logging =>
+    logging.AddConfiguration(builder.Configuration.GetSection("Logging")).AddConsole());
+var redisMultiplexer = RedisConnectionFactory.TryCreate(builder.Configuration, redisLoggerFactory);
+if (redisMultiplexer is null)
+{
+    // Loud on purpose: dotnet run and every WebApplicationFactory-based integration test are expected
+    // to hit this path (no Redis available), so it's not an error - but a real deployment silently
+    // running single-instance with no idea why a second replica behaves incorrectly is exactly the
+    // failure mode this whole Redis effort exists to fix.
+    redisLoggerFactory.CreateLogger("AzureBuddy.Redis").LogWarning(
+        "Redis:Configuration is not set - chat history, Data Protection keys, and LLM settings changes " +
+        "stay in-memory/per-instance. This deployment cannot be scaled beyond one API replica.");
+}
+
+builder.Services.AddAzureBuddyRedis(builder.Configuration, redisMultiplexer);
 
 builder.Services.AddControllers()
     // Without this, every C# enum (ChatMessageRole, ChatMessageType) serializes as its underlying int
@@ -77,7 +103,6 @@ builder.Services.AddCors(options =>
         .AllowAnyMethod()
         .AllowCredentials());
 });
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -127,8 +152,8 @@ builder.Services.AddProblemDetails();
 // ServerVersion.AutoDetect, which opens a connection at startup just to ask the server its version)
 // keeps app startup from depending on network round-trips before it's even accepting requests - if
 // your MySQL server is a different version, update this to match.
-var connectionString = builder.Configuration.GetConnectionString("Default")
-    ?? throw new InvalidOperationException("Missing ConnectionStrings:Default in configuration.");
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("Missing ConnectionStrings:DefaultConnection in configuration.");
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 34))));
@@ -186,10 +211,42 @@ builder.Services.AddAuthorization(options =>
         .Build();
 });
 
+// ---- Forwarded headers (trust the real client IP behind a reverse proxy) ----
+// The rate limiter below partitions by HttpContext.Connection.RemoteIpAddress - behind any reverse
+// proxy/load balancer, that's always the PROXY's own IP unless this middleware rewrites it from the
+// X-Forwarded-For header first. KnownNetworks/KnownProxies are cleared rather than left at their
+// ASP.NET Core defaults (which only trust literal loopback) and rather than defaulting to "trust
+// anything": an unconfigured deployment gets today's behavior (every client is rate-limited together
+// under the proxy's IP - wrong, but not attacker-controlled), and Network:KnownProxies must be set to a
+// deployment's actual reverse-proxy IP(s) before X-Forwarded-For is honored at all. Blindly trusting
+// X-Forwarded-For with no configured proxy would let any client set their own "IP" and either dodge the
+// rate limit or frame another client under it.
+var knownProxies = (builder.Configuration.GetSection("Network:KnownProxies").Get<string[]>() ?? Array.Empty<string>())
+    .Select(proxy => IPAddress.TryParse(proxy, out var proxyIp) ? proxyIp : null)
+    .Where(proxyIp => proxyIp is not null)
+    .ToList();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+    foreach (var proxyIp in knownProxies)
+    {
+        options.KnownProxies.Add(proxyIp!);
+    }
+});
+
 // ---- Rate limiting ----
-// Fixed-window limiter on the auth endpoints only: 5 requests per minute per client IP. This is a
-// basic brute-force/registration-spam speed bump, not a substitute for account lockout (Identity's
-// lockout policy above already handles "too many wrong passwords for one account").
+// Fixed-window limiter on the auth endpoints only, partitioned per client IP via AddPolicy/
+// RateLimitPartition.GetFixedWindowLimiter: 5 requests per minute PER IP. This is a basic
+// brute-force/registration-spam speed bump, not a substitute for account lockout (Identity's lockout
+// policy above already handles "too many wrong passwords for one account").
+//
+// This used to be AddFixedWindowLimiter, which creates exactly ONE limiter shared by every caller
+// regardless of who they are - despite the "per client IP" framing, there was no partitioning at all,
+// so five requests from anyone, anywhere, exhausted the shared budget for every other user until the
+// window reset. AddPolicy with a partition key function is what actually makes each IP get its own
+// independent budget.
 //
 // The "Testing" environment gets an effectively unlimited permit count: WebApplicationFactory-based
 // integration tests all originate from the TestServer's single synthetic client IP, so a real-world
@@ -200,36 +257,55 @@ var authRateLimit = builder.Environment.IsEnvironment("Testing") ? int.MaxValue 
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddFixedWindowLimiter(RateLimiterPolicies.Auth, limiterOptions =>
-    {
-        limiterOptions.PermitLimit = authRateLimit;
-        limiterOptions.Window = TimeSpan.FromMinutes(1);
-        limiterOptions.QueueLimit = 0;
-    });
+    options.AddPolicy(RateLimiterPolicies.Auth, httpContext => AuthRateLimiterPolicy.CreatePartition(httpContext, authRateLimit));
 });
 
-// ---- Data Protection (PAT encryption key storage) ----
-// By default, Data Protection keys live under the OS user profile, which breaks the moment this app
-// runs in a container or scales to more than one instance (each instance would generate its own key
-// and be unable to decrypt PATs another instance encrypted). Pointing it at an explicit, persistent
-// directory - and in a real multi-instance deployment, a *shared* one (mounted volume, or
-// PersistKeysToDbContext/Azure Blob storage instead of the filesystem) - avoids that. See the README
-// for what happens if this key material is ever lost (short version: every stored PAT becomes
-// permanently unreadable and users must re-enter them).
-var dataProtectionKeyPath = builder.Configuration["DataProtection:KeyPath"] ?? "DataProtection-Keys";
-builder.Services.AddDataProtection()
-    .SetApplicationName("AzureBuddy")
-    .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeyPath));
+// ---- Data Protection (PAT/API-key encryption key storage) ----
+// By default (and always, when Redis isn't configured), Data Protection keys live under an explicit
+// filesystem directory - which breaks the moment this app scales to more than one replica, since each
+// instance would generate its own key ring and be unable to decrypt ciphertext another instance
+// produced (LlmSettingsService.BuildEffectiveOptions and UserAdoConfigService.GetConnectionContextAsync
+// both now degrade gracefully rather than 500ing when that happens, but "please re-enter your PAT" for
+// every user on every deploy is still exactly the failure this fixes). When Redis IS configured, every
+// replica instead persists to and reads from the SAME Redis-backed key ring via
+// PersistKeysToStackExchangeRedis, so a PAT/API key encrypted by one replica decrypts fine on any other.
+// See the README for what happens if this key material is ever lost (every stored PAT/API key becomes
+// permanently unreadable and users must re-enter them) and DataProtectionKeyImporter for migrating an
+// existing filesystem key ring into Redis during a one-time cutover.
+var dataProtectionBuilder = builder.Services.AddDataProtection().SetApplicationName("AzureBuddy");
+if (redisMultiplexer is not null)
+{
+    var redisInstanceName = builder.Configuration[$"{RedisOptions.SectionName}:InstanceName"] ?? "azurebuddy:";
+    dataProtectionBuilder.PersistKeysToStackExchangeRedis(redisMultiplexer, $"{redisInstanceName}DataProtection-Keys");
+}
+else
+{
+    var dataProtectionKeyPath = builder.Configuration["DataProtection:KeyPath"] ?? "DataProtection-Keys";
+    dataProtectionBuilder.PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeyPath));
+}
 
-builder.Services.AddLlmProviders(builder.Configuration);
+builder.Services.AddLlmProviders(builder.Configuration, redisMultiplexer);
 builder.Services.AddAzureDevOps(builder.Configuration);
 builder.Services.AddWorkItemStates();
 builder.Services.AddChatRouting();
-builder.Services.AddAzureBuddyAgent();
+builder.Services.AddAzureBuddyAgent(redisMultiplexer);
 builder.Services.AddAzureBuddyAuth(builder.Configuration);
 builder.Services.AddAzureBuddyAccount();
 builder.Services.AddAdoSettings();
 builder.Services.AddChatHistory();
+
+// ---- Health checks ----
+// "ready" tags DatabaseHealthCheck (and RedisHealthCheck, only when Redis is configured) so
+// /health/ready reflects whether this replica can actually serve a request right now; /health/live
+// below runs no checks at all - see the two MapHealthChecks calls after the pipeline is built for why
+// that split matters for how an orchestrator should react to each one failing.
+builder.Services.AddHealthChecks()
+    .AddCheck<AzureBuddy.Api.HealthChecks.DatabaseHealthCheck>("database", tags: new[] { "ready" });
+if (redisMultiplexer is not null)
+{
+    builder.Services.AddHealthChecks()
+        .AddCheck<AzureBuddy.Api.HealthChecks.RedisHealthCheck>("redis", tags: new[] { "ready" });
+}
 
 var app = builder.Build();
 
@@ -280,15 +356,20 @@ using (var scope = app.Services.CreateScope())
         .LoadFromDatabaseIfPresentAsync();
 }
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-// Registered first (before routing/auth/anything else that could throw) so it wraps the entire
-// request pipeline - any exception from any downstream middleware or controller gets caught here.
+// Must run before anything that reads Connection.RemoteIpAddress or Request.Scheme - the rate
+// limiter's per-IP partitioning and UseHttpsRedirection below both depend on this having already
+// rewritten them from X-Forwarded-For/X-Forwarded-Proto (when Network:KnownProxies trusts the caller).
+app.UseForwardedHeaders();
+
+// Registered as early as possible (only UseForwardedHeaders runs first, and it never throws) so it
+// wraps the entire request pipeline - any exception from any downstream middleware or controller gets
+// caught here.
 app.UseExceptionHandler();
 
 app.UseHttpsRedirection();
@@ -300,11 +381,25 @@ app.UseRateLimiter();
 // rejected by the auth pipeline before CORS ever got a chance to approve the real request.
 app.UseCors();
 
-// Authentication (who are you?) must run before Authorization (are you allowed?).
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// AllowAnonymous is required on both: Program.cs's AuthorizationOptions.FallbackPolicy above requires
+// an authenticated user on every endpoint that doesn't opt out, and an orchestrator's health probe never
+// carries a bearer token.
+//
+// /health/live runs no checks (Predicate = _ => false) - it only proves the process is up and the
+// pipeline can complete a request, which is all a liveness probe should ask: failing it tells an
+// orchestrator to kill and restart the container, so it must never fail for a reason a restart can't
+// fix (like MySQL being briefly unreachable).
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
+
+// /health/ready runs every check tagged "ready" (DatabaseHealthCheck, and RedisHealthCheck when Redis
+// is configured) - failing it tells a load balancer to stop routing traffic to this replica without
+// restarting it, the correct reaction to "a dependency is down" rather than "this process is broken."
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }).AllowAnonymous();
 
 app.Run();
 
