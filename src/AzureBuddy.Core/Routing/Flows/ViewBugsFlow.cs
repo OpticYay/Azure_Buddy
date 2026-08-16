@@ -5,9 +5,16 @@ using AzureBuddy.Core.Intent;
 namespace AzureBuddy.Core.Routing.Flows;
 
 /// <summary>Ports "Has Target Id (View)? -> Get Linked Bugs (View) -> Has Linked Items (View)? -> Get
-/// Linked Bugs Details (View) -> Build View Table".</summary>
+/// Linked Bugs Details (View) -> Build View Table". Results are ranked most-to-least urgent by
+/// <see cref="WorkItemUrgencyRanker"/> rather than left in whatever order ADO returned them.</summary>
 public sealed class ViewBugsFlow
 {
+    private static readonly string[] Fields =
+    {
+        AdoFields.Title, AdoFields.WorkItemType, AdoFields.State,
+        AdoFields.Priority, AdoFields.StartDate, AdoFields.TargetDate, AdoFields.DueDate, AdoFields.FinishDate
+    };
+
     private readonly IAdoClient _adoClient;
     private readonly AdoConnectionContextAccessor _connectionAccessor;
 
@@ -39,16 +46,19 @@ public sealed class ViewBugsFlow
             return FlowResult.Done($"No linked work items found under #{extracted.WorkItemId}.");
         }
 
-        var items = await _adoClient.GetWorkItemsAsync(
-            connection,
-            linkedIds,
-            new[] { AdoFields.Title, AdoFields.WorkItemType, AdoFields.State },
-            cancellationToken);
+        var items = await _adoClient.GetWorkItemsAsync(connection, linkedIds, Fields, cancellationToken);
+        var ranked = WorkItemUrgencyRanker.SortByUrgency(items);
 
-        var headers = new[] { "ID", "Title", "Type", "State" };
-        var rows = items.Select(i => (IReadOnlyList<string>)new[] { i.Id.ToString(), i.Title ?? "", i.WorkItemType ?? "", i.State ?? "" }).ToList();
+        var headers = new[] { "ID", "Title", "Type", "State", "Priority", "Start Date", "Due Date" };
+        var rows = ranked.Select(BuildRow).ToList();
         var table = MarkdownTableBuilder.Build(headers, rows);
 
-        return FlowResult.DoneWithTable($"Work items linked to #{extracted.WorkItemId}:\n\n{table}", headers, rows);
+        return FlowResult.DoneWithTable($"Work items linked to #{extracted.WorkItemId}, most urgent first:\n\n{table}", headers, rows);
     }
+
+    private static IReadOnlyList<string> BuildRow(WorkItem i) => new[]
+    {
+        i.Id.ToString(), i.Title ?? "", i.WorkItemType ?? "", i.State ?? "",
+        WorkItemUrgencyRanker.FormatPriority(i), WorkItemUrgencyRanker.FormatDate(i.StartDate), WorkItemUrgencyRanker.FormatDate(i.DueDate)
+    };
 }

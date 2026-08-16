@@ -36,8 +36,16 @@ public static class LlmServiceCollectionExtensions
         services.AddScoped<LlmApiKeyProtector>();
         services.AddScoped<LlmSettingsService>();
 
-        services.AddHttpClient<GeminiChatClient>();
-        services.AddHttpClient<OllamaChatClient>();
+        // HttpClient.Timeout defaults to 100 seconds, and it is enforced independently of (and wins
+        // against) the per-request CancellationTokenSource each client sets from its configured
+        // TimeoutSeconds. That silently capped every provider at 100s: an admin could save Ollama's
+        // timeout as 540s, watch it persist, and still get "request failed or timed out" at 100s on
+        // any agent turn - which is most of them, since tool-calling prompts on a self-hosted 14B model
+        // routinely run longer than that. Disabling the client-level timeout leaves the CTS as the one
+        // authority, which is also what makes the setting hot-reloadable: these clients are registered
+        // once at startup, but the CTS reads TimeoutSeconds fresh on every call.
+        services.AddHttpClient<GeminiChatClient>(c => c.Timeout = Timeout.InfiniteTimeSpan);
+        services.AddHttpClient<OllamaChatClient>(c => c.Timeout = Timeout.InfiniteTimeSpan);
 
         services.AddKeyedTransient<IChatCompletionClient>(
             LlmProviderNames.Gemini, (sp, _) => sp.GetRequiredService<GeminiChatClient>());

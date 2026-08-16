@@ -1,8 +1,11 @@
-import { Component, ElementRef, OnDestroy, ViewChild, inject, input, output, signal } from '@angular/core';
+import { Component, ElementRef, OnDestroy, ViewChild, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
+import { Observable, map, of, switchMap } from 'rxjs';
 
 import { ChatService } from '../../../core/services/chat.service';
+import { ChatActivityService } from '../../../core/services/chat-activity.service';
+import { DRAFT_SESSION_KEY, NewChatService } from '../../../core/services/new-chat.service';
 import { extractApiErrorMessage } from '../../../core/models/api-error.model';
 import { popIn } from '../../../shared/animations';
 
@@ -18,15 +21,35 @@ import { popIn } from '../../../shared/animations';
 })
 export class MessageComposer implements OnDestroy {
   private readonly chatService = inject(ChatService);
+  private readonly chatActivity = inject(ChatActivityService);
+  private readonly newChatService = inject(NewChatService);
 
-  readonly sessionId = input.required<string>();
-  readonly messageSent = output<void>();
+  /** Null means "this conversation hasn't sent a first message yet, so it has no session id" - see
+   * new-chat.service.ts. Not required<string>() anymore: a brand-new, not-yet-persisted conversation is
+   * a real, supported state here, not an error. */
+  readonly sessionId = input<string | null>(null);
 
-  /** Fired only around the text-send path (POST /chat), true right before the request goes out and
-   * false once it settles - MessageThread listens for this to show/hide the "agent is thinking" typing
-   * indicator while the reply is in flight. Not used for screenshot sends, since a screenshot upload
-   * has its own "Sending…" button state already and doesn't produce an agent reply to wait for. */
-  readonly awaitingReply = output<boolean>();
+  /** Carries the session the message was sent TO, not whichever one is open when the reply lands -
+   * a slow reply can settle after the user has already switched conversations, and the thread has to
+   * be able to tell that it's being told about a session it's no longer showing. */
+  readonly messageSent = output<string>();
+
+  /** Fired only when sessionId() was null at send time and the backend just created a real session as
+   * a side effect of that first message - see sendText()/sendScreenshot() below. MessageThread listens
+   * for this to navigate to the new session's URL. Distinct from messageSent because the two need
+   * different handling: messageSent means "reload THIS session," sessionCreated means "there is a new
+   * session now and we need to move to it." */
+  readonly sessionCreated = output<string>();
+
+  /** Fired the moment a text send actually goes out, carrying the text itself - lets MessageThread
+   * show the user's own message immediately instead of waiting for the round trip to finish and the
+   * whole session to reload. Paired with messageFailed below for the one case that needs undoing. */
+  readonly messageSubmitted = output<string>();
+
+  /** Fired if the text send comes back as an error, so MessageThread can drop the optimistic message
+   * it added on messageSubmitted - the text itself is already restored to the field by sendText()
+   * below, so leaving it in the log too would show the same message twice. */
+  readonly messageFailed = output<void>();
 
   /** Fired the moment a text send actually goes out, carrying the text itself - lets MessageThread
    * show the user's own message immediately instead of waiting for the round trip to finish and the
@@ -55,8 +78,47 @@ export class MessageComposer implements OnDestroy {
 
   readonly attachedFile = signal<File | null>(null);
   readonly attachedPreviewUrl = signal<string | null>(null);
-  readonly sending = signal(false);
+  /** Whether THIS composer's own session has a request in flight. Derived from the shared service
+   * rather than held here, so a reply pending in another conversation no longer disables this one's
+   * Send button - and so the state survives this component being destroyed and rebuilt. A draft
+   * (sessionId() null) conversation doesn't have a real id to key by yet, so it uses the same fixed
+   * DRAFT_SESSION_KEY every send() call below keys its own tracked request with. */
+  readonly sending = computed(() => this.chatActivity.isWorking(this.sessionId() ?? DRAFT_SESSION_KEY));
   readonly errorMessage = signal<string | null>(null);
+
+  constructor() {
+    // Third piece of state that outlived the conversation it belonged to (see the working indicator
+    // and pendingMessage): this component is reused across session switches, so "Could not send that
+    // message" from one conversation stayed pinned above the composer in the next one. Reading
+    // sessionId() is what subscribes this effect to it.
+    effect(() => {
+      this.sessionId();
+      this.errorMessage.set(null);
+    });
+
+    // "New Conversation" was clicked - clear whatever was mid-draft here (typed text, an attached
+    // screenshot) so it doesn't leak into the blank conversation the click just asked for. This has to
+    // be a separate effect from the one above: the route can stay at sessionId() === null across
+    // repeated clicks (there's nothing to navigate TO until a message is actually sent), so a plain
+    // sessionId() dependency alone would never re-fire on the second, third, ... click. resetToken()
+    // bumps on every click regardless of whether the id changed.
+    //
+    // The reset body runs inside untracked() because an effect subscribes to every signal it READS,
+    // not just the one it means to watch - and removeAttachment() reads attachedPreviewUrl (to revoke
+    // the object URL). That made this effect depend on attachedPreviewUrl, which setAttachedFile()
+    // writes: attaching or pasting a screenshot re-fired this very effect, which then cleared the
+    // attachment (and the typed caption) the instant it was added, so a screenshot could never be
+    // sent at all - send() found no file and fell through to sendText(). untracked() runs the same
+    // code without registering any of it as a dependency, leaving resetToken() as the sole trigger.
+    effect(() => {
+      this.newChatService.resetToken();
+      untracked(() => {
+        this.messageText.set('');
+        this.removeAttachment();
+        this.errorMessage.set(null);
+      });
+    });
+  }
 
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
@@ -108,10 +170,17 @@ export class MessageComposer implements OnDestroy {
     // a reference to the underlying file data until explicitly revoked (or the page unloads). Not
     // revoking these in a long-lived chat session would leak memory a little more with every screenshot
     // attached/removed.
-    const existing = this.attachedPreviewUrl();
+    //
+    // Read untracked so this cleanup can never subscribe a caller (the reset effect above calls it)
+    // to the same signal it then clears - a read-then-write of one signal inside an effect is exactly
+    // the self-retriggering loop this method used to cause.
+    const existing = untracked(this.attachedPreviewUrl);
     if (existing) {
       URL.revokeObjectURL(existing);
     }
+    // Clear the signal too, not just the browser-side URL: leaving the revoked string in place left
+    // attachedPreviewUrl reporting a dead URL after every removeAttachment().
+    this.attachedPreviewUrl.set(null);
   }
 
   ngOnDestroy(): void {
@@ -170,9 +239,14 @@ export class MessageComposer implements OnDestroy {
       return;
     }
 
-    this.sending.set(true);
+    // Captured now rather than read again in the callbacks: the user can switch conversations while
+    // this request is in flight, at which point sessionId() reports the NEW session. Every use below
+    // has to stay pinned to the session (or draft) the message was actually sent from. null here means
+    // this is the first message of a brand-new conversation - nothing has been persisted yet.
+    const sessionId = this.sessionId();
+    const activityKey = sessionId ?? DRAFT_SESSION_KEY;
+
     this.errorMessage.set(null);
-    this.awaitingReply.emit(true);
     // Clear the box the moment the message is on its way, not once the reply comes back - the model
     // can take several seconds to answer, and leaving the sent text sitting in the box reads as "did
     // this actually send?" rather than "Buddy is working on it." Restore it on failure below so a
@@ -180,15 +254,22 @@ export class MessageComposer implements OnDestroy {
     this.messageText.set('');
     this.messageSubmitted.emit(text);
 
-    this.chatService.sendMessage(this.sessionId(), text).subscribe({
-      next: () => {
-        this.sending.set(false);
-        this.awaitingReply.emit(false);
-        this.messageSent.emit();
+    // chatService.sendMessage(null, text) is the single call that both creates the session and records
+    // this first message - see ChatController.PostAsync. There is no separate "create session" request
+    // for the frontend to make (and no window where an empty session would exist because of one).
+    // track() marks the request busy and clears it via finalize() when it settles, however it settles -
+    // see chat-activity.service.ts.
+    this.chatActivity.track(activityKey, this.chatService.sendMessage(sessionId, text)).subscribe({
+      next: (response) => {
+        if (sessionId) {
+          this.messageSent.emit(sessionId);
+        } else {
+          // The backend just created a real session for this. MessageThread needs to navigate to it -
+          // it can't just reload "this" session, because there was no session to reload.
+          this.sessionCreated.emit(response.sessionId);
+        }
       },
       error: () => {
-        this.sending.set(false);
-        this.awaitingReply.emit(false);
         this.messageText.set(text);
         this.messageFailed.emit();
         this.errorMessage.set('Could not send that message. Please try again.');
@@ -206,31 +287,50 @@ export class MessageComposer implements OnDestroy {
       return;
     }
 
-    this.sending.set(true);
+    const existingSessionId = this.sessionId();
+    const activityKey = existingSessionId ?? DRAFT_SESSION_KEY;
     this.errorMessage.set(null);
 
-    // ChatsController's [Required] on the `content` form field rejects an empty string outright
-    // (confirmed against the real API: a screenshot-only send with no caption came back 400 "The
-    // content field is required.") - a screenshot attached with no typed caption needs SOME text sent,
-    // so we default to a placeholder rather than forcing the user to type something meaningless.
+    // A screenshot attached with no typed caption is a normal send, so it gets a placeholder rather
+    // than the user being made to type something meaningless. ChatsController applies the same default
+    // server-side (`content` is deliberately not [Required] there anymore, precisely so a caption-less
+    // screenshot isn't a 400) - this one just keeps the text the same whichever side supplies it.
     const content = this.messageText().trim() || 'Screenshot attached.';
 
-    this.chatService.appendScreenshotMessage(this.sessionId(), content, workItemId, file).subscribe({
-      next: () => {
-        // Note: a 200 response here does NOT necessarily mean the screenshot was successfully linked
-        // in Azure DevOps - AppendMessageResult.success can be false (e.g. ADO rejected the request)
-        // while the HTTP call itself still succeeds, because the backend always records a ChatMessage
-        // either way (see AzureBuddy.Core/Chat/ChatSessionService.AppendMessageWithScreenshotAsync).
-        // We don't need to branch on that here: whichever happened, the resulting message (a normal
-        // success or an "I couldn't attach..." failure message) is already saved, and messageClassifier
-        // will render it correctly (as 'screenshot' or 'error') once MessageThread reloads the list.
-        this.sending.set(false);
+    // Unlike sendText() above, POST /api/chats/{id}/messages has no "create the session if there isn't
+    // one yet" mode - it always needs a real id. So a screenshot sent as the very first message of a
+    // brand-new conversation still needs an explicit create-then-append: create an (empty, for a moment)
+    // session, then upload into it. That moment is exactly what ListSessionsAsync's zero-message filter
+    // and the /api/chats/empty cleanup endpoint exist to cover, in case the upload never completes (a
+    // dropped connection between the two calls, etc.) - see ChatSessionService for both.
+    const upload$: Observable<{ sessionId: string }> = (
+      existingSessionId ? of(existingSessionId) : this.chatService.createSession(null).pipe(map((session) => session.id))
+    ).pipe(
+      switchMap((sessionId) =>
+        this.chatService
+          .appendScreenshotMessage(sessionId, content, workItemId, file)
+          .pipe(map(() => ({ sessionId }))),
+      ),
+    );
+
+    this.chatActivity.track(activityKey, upload$).subscribe({
+      next: ({ sessionId }) => {
+        // Note: a successful upload$ here does NOT necessarily mean the screenshot was successfully
+        // linked in Azure DevOps - AppendMessageResult.success can be false (e.g. ADO rejected the
+        // request) while the HTTP call itself still succeeds, because the backend always records a
+        // ChatMessage either way (see ChatSessionService.AppendMessageWithScreenshotAsync). We don't
+        // need to branch on that here: whichever happened, the resulting message (a normal success or
+        // an "I couldn't attach..." failure message) is already saved, and messageClassifier will
+        // render it correctly (as 'screenshot' or 'error') once the thread reloads.
         this.messageText.set('');
         this.removeAttachment();
-        this.messageSent.emit();
+        if (existingSessionId) {
+          this.messageSent.emit(sessionId);
+        } else {
+          this.sessionCreated.emit(sessionId);
+        }
       },
       error: (err: HttpErrorResponse) => {
-        this.sending.set(false);
         // Both AdoNotConfiguredException (ChatsController's catch block) and a plain validation
         // failure (missing workItemId, oversized file) now use the same ApiErrorResponse shape - no
         // more guessing which kind of 400 this is by inspecting the body's type.

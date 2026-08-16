@@ -1,0 +1,33 @@
+<div class="auth">
+  <img class="auth__logo" src="/assets/azurebuddy-logo.png" alt="Azure Buddy" width="480" height="261" />
+
+  <div class="card">
+    <div class="card__head">
+      <img class="mark" src="/assets/azurebuddy-mark.png" alt="" width="30" height="30" />
+      <div>
+        @switch (state()) {
+          @case ('confirming') {
+            <h1>Confirming your email…</h1>
+            <p class="tagline">One moment</p>
+          }
+          @case ('success') {
+            <h1>Email confirmed</h1>
+            <p class="tagline">Taking you to Azure Buddy…</p>
+          }
+          @case ('invalid-link') {
+            <h1>Invalid link</h1>
+            <p class="tagline">This confirmation link is missing or malformed.</p>
+          }
+          @default {
+            <h1>Confirmation failed</h1>
+            <p class="tagline">{{ errorMessage() }}</p>
+          }
+        }
+      </div>
+    </div>
+
+    @if (state() === 'error' || state() === 'invalid-link') {
+      <p class="switch"><a routerLink="/login">Back to sign in</a></p>
+    }
+  </div>
+</div>

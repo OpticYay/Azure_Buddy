@@ -119,8 +119,10 @@ textarea::placeholder {
    with anything else in the app despite being in the global sheet. */
 .auth {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: var(--space-lg);
   min-height: 100vh;
   padding: var(--space-lg);
   background: var(--ink-900);
@@ -129,6 +131,12 @@ textarea::placeholder {
   background-image:
     repeating-linear-gradient(to right, rgba(169, 124, 47, 0.07) 0 1px, transparent 1px 32px),
     repeating-linear-gradient(to bottom, rgba(169, 124, 47, 0.07) 0 1px, transparent 1px 32px);
+}
+
+.auth__logo {
+  width: 220px;
+  max-width: 70vw;
+  height: auto;
 }
 
 .auth .card {
@@ -153,18 +161,10 @@ textarea::placeholder {
 }
 
 .auth .mark {
-  display: grid;
-  place-items: center;
   flex-shrink: 0;
   width: 30px;
   height: 30px;
-  border: 1px solid var(--brass);
-  border-radius: var(--r-sm);
-  color: var(--brass-deep);
-  font-family: var(--font-mono);
-  font-size: var(--t-micro);
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  object-fit: contain;
 }
 
 .auth h1 {

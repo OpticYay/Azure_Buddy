@@ -29,17 +29,10 @@
 }
 
 .brand__mark {
-  display: grid;
-  place-items: center;
   width: 24px;
   height: 24px;
-  border: 1px solid var(--brass);
-  border-radius: var(--r-sm);
-  color: var(--brass-lift);
-  font-family: var(--font-mono);
-  font-size: var(--t-micro);
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 
 .brand__name {
@@ -91,6 +84,15 @@
   font-family: var(--font-mono);
   font-size: var(--t-micro);
   color: var(--ink-300);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+
+.account__email:hover,
+.account__email.is-active {
+  color: var(--brass-lift);
+  border-bottom-color: var(--brass);
 }
 
 .btn-quiet {

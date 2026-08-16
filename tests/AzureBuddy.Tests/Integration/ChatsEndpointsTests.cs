@@ -65,14 +65,79 @@ public class ChatsEndpointsTests : IntegrationTestBase
     public async Task ListSessions_ReturnsOnlyThisUsersSessions()
     {
         using var client = await CreateAuthenticatedClientAsync();
-        await client.PostAsJsonAsync("/api/chats", new CreateSessionRequest("First"));
-        await client.PostAsJsonAsync("/api/chats", new CreateSessionRequest("Second"));
+        // A session with no messages doesn't show up in the list at all (see the next test) - each one
+        // here needs a message so this test is actually exercising the user-scoping it's named for,
+        // not incidentally passing because both sessions were invisible anyway.
+        var first = await CreateSessionAsync(client, "First");
+        using (var form = BuildMessageForm("User", "first message"))
+        {
+            await client.PostAsync($"/api/chats/{first.Id}/messages", form);
+        }
+        var second = await CreateSessionAsync(client, "Second");
+        using (var form = BuildMessageForm("User", "second message"))
+        {
+            await client.PostAsync($"/api/chats/{second.Id}/messages", form);
+        }
 
         var page = await client.GetFromJsonAsync<PagedResult<ChatSessionSummary>>("/api/chats?page=1&pageSize=20");
 
         Assert.Equal(2, page!.TotalCount);
         Assert.Contains(page.Items, s => s.Title == "First");
         Assert.Contains(page.Items, s => s.Title == "Second");
+    }
+
+    [Fact]
+    public async Task ListSessions_ExcludesSessionsWithNoMessages()
+    {
+        using var client = await CreateAuthenticatedClientAsync();
+        await CreateSessionAsync(client, "Never sent anything");
+        var withMessage = await CreateSessionAsync(client, "Actually has content");
+        using (var form = BuildMessageForm("User", "hello"))
+        {
+            await client.PostAsync($"/api/chats/{withMessage.Id}/messages", form);
+        }
+
+        var page = await client.GetFromJsonAsync<PagedResult<ChatSessionSummary>>("/api/chats?page=1&pageSize=20");
+
+        Assert.Single(page!.Items);
+        Assert.Equal("Actually has content", page.Items[0].Title);
+    }
+
+    [Fact]
+    public async Task DeleteEmptySessions_RemovesOnlyZeroMessageSessions()
+    {
+        using var client = await CreateAuthenticatedClientAsync();
+        var empty1 = await CreateSessionAsync(client, "Empty one");
+        var empty2 = await CreateSessionAsync(client, "Empty two");
+        var withMessage = await CreateSessionAsync(client, "Has content");
+        using (var form = BuildMessageForm("User", "hello"))
+        {
+            await client.PostAsync($"/api/chats/{withMessage.Id}/messages", form);
+        }
+
+        var response = await client.DeleteAsync("/api/chats/empty");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var deletedCount = await response.Content.ReadFromJsonAsync<int>();
+        Assert.Equal(2, deletedCount);
+
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/chats/{empty1.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/chats/{empty2.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/chats/{withMessage.Id}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteEmptySessions_OnlyAffectsCallersOwnSessions()
+    {
+        using var clientA = await CreateAuthenticatedClientAsync();
+        var emptyA = await CreateSessionAsync(clientA, "A's empty session");
+
+        using var clientB = await CreateAuthenticatedClientAsync();
+        await CreateSessionAsync(clientB, "B's empty session");
+        var deletedForB = await clientB.DeleteAsync("/api/chats/empty");
+        Assert.Equal(1, await deletedForB.Content.ReadFromJsonAsync<int>());
+
+        // B's cleanup had no effect on A's session.
+        Assert.Equal(HttpStatusCode.OK, (await clientA.GetAsync($"/api/chats/{emptyA.Id}")).StatusCode);
     }
 
     [Fact]

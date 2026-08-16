@@ -5,7 +5,7 @@
     already-loaded conversations read as a cross-fade, even though this element itself never leaves
     the DOM - the component instance is reused across session switches.
   -->
-  <div class="log" [@crossFade]="sessionId()">
+  <div class="log" #logContainer [@crossFade]="sessionId()">
     @if (loading()) {
       <p class="state">Loading conversation…</p>
     } @else if (loadError()) {
@@ -44,10 +44,6 @@
         <app-typing-indicator />
       </div>
     }
-
-    <!-- Zero-height marker; scrollToBottom() scrolls this into view, which is simpler than
-         computing container scroll offsets. -->
-    <div #scrollAnchor></div>
   </div>
 
   <app-message-composer
@@ -56,5 +52,9 @@
     (messageSubmitted)="onMessageSubmitted($event)"
     (messageFailed)="onMessageFailed()"
     (awaitingReply)="onAwaitingReplyChange($event)"
+    (messageSent)="onMessageSent($event)"
+    (sessionCreated)="onSessionCreated($event)"
+    (messageSubmitted)="onMessageSubmitted($event)"
+    (messageFailed)="onMessageFailed()"
   />
 </div>

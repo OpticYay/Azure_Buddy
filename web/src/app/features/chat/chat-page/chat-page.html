@@ -1,12 +1,10 @@
 <app-session-list></app-session-list>
 
 <div class="panel">
-  @if (sessionId(); as id) {
-    <app-message-thread [sessionId]="id" />
-  } @else {
-    <div class="blank">
-      <p class="blank__lead">No conversation open</p>
-      <p class="blank__hint">Pick one from the list, or start a new conversation to file a defect.</p>
-    </div>
-  }
+  <!-- No longer branches on whether a session id is present: the bare /chat route (sessionId() null)
+       IS the "start a new, not-yet-persisted conversation" state now, not a dead end that only offered
+       "pick something from the list." MessageThread already has an empty/opener view for a session with
+       no messages yet - a draft with no id reuses exactly that, and its composer is what turns the
+       draft into a real session on the first send (see message-thread.ts/message-composer.ts). -->
+  <app-message-thread [sessionId]="sessionId()" />
 </div>

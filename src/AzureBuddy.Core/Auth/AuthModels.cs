@@ -29,6 +29,22 @@ public sealed record LoginRequest(
 public sealed record RefreshRequest([Required] string RefreshToken);
 public sealed record LogoutRequest([Required] string RefreshToken);
 
+/// <summary>Same non-enumeration shape as LoginAsync's invalid_credentials error: whether this email
+/// has an account or not, ForgotPasswordAsync always reports success - see AuthService for why.</summary>
+public sealed record ForgotPasswordRequest([Required, EmailAddress] string Email);
+
+/// <summary>Token is Identity's own password-reset token (from GeneratePasswordResetTokenAsync),
+/// URL-safe-base64-encoded by AuthService before it ever reaches the client - see ResetPasswordAsync.</summary>
+public sealed record ResetPasswordRequest(
+    [Required, EmailAddress] string Email,
+    [Required] string Token,
+    [Required] string NewPassword);
+
+public sealed record ConfirmEmailRequest([Required, EmailAddress] string Email, [Required] string Token);
+
+/// <summary>Same non-enumeration shape as ForgotPasswordRequest.</summary>
+public sealed record ResendConfirmationRequest([Required, EmailAddress] string Email);
+
 public sealed record AuthTokens(string AccessToken, DateTime AccessTokenExpiresAtUtc, string RefreshToken);
 
 public sealed record AuthResult

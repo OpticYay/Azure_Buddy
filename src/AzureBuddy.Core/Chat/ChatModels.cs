@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using AzureBuddy.Data.Entities;
 
 namespace AzureBuddy.Core.Chat;
@@ -30,6 +31,8 @@ public sealed record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSi
 }
 
 public sealed record CreateSessionRequest(string? Title);
+
+public sealed record RenameSessionRequest([Required] string Title);
 
 public sealed record AppendMessageRequest(ChatMessageRole Role, string Content, int? WorkItemId);
 

@@ -1,6 +1,9 @@
-import { Component, ElementRef, ViewChild, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, ElementRef, Injector, ViewChild, afterNextRender, computed, effect, inject, input, signal } from '@angular/core';
+import { Router } from '@angular/router';
 
 import { ChatService } from '../../../core/services/chat.service';
+import { ChatActivityService } from '../../../core/services/chat-activity.service';
+import { DRAFT_SESSION_KEY, NewChatService } from '../../../core/services/new-chat.service';
 import { AdoSettingsService } from '../../../core/services/ado-settings.service';
 import { ChatMessageView } from '../../../core/models/chat.models';
 import { classifyMessage } from '../../../core/services/message-classifier';
@@ -31,9 +34,16 @@ const STARTERS = [
 })
 export class MessageThread {
   private readonly chatService = inject(ChatService);
+  private readonly chatActivity = inject(ChatActivityService);
+  private readonly newChatService = inject(NewChatService);
   private readonly adoSettingsService = inject(AdoSettingsService);
+  private readonly router = inject(Router);
+  private readonly injector = inject(Injector);
 
-  readonly sessionId = input.required<string>();
+  /** Null on the bare /chat route: "no conversation open yet" - not an error state, the composer still
+   * renders (see the template) and is ready to start a brand-new one. See ChatPage/chat-page.html,
+   * which now always mounts this component instead of only doing so once a session id exists. */
+  readonly sessionId = input<string | null>(null);
 
   private readonly messages = signal<ChatMessageView[]>([]);
 
@@ -51,9 +61,11 @@ export class MessageThread {
   readonly loading = signal(true);
   readonly loadError = signal<string | null>(null);
 
-  /** Driven by MessageComposer's (awaitingReply) output - true while a text message's POST /chat call
-   * is in flight, so the typing indicator shows exactly during that window. */
-  readonly isAwaitingReply = signal(false);
+  /** True while THIS session has a request in flight, so the typing indicator shows in the
+   * conversation the message was actually sent to and nowhere else. Read from the shared service
+   * rather than tracked here, so it neither leaks into the next conversation you open nor resets to
+   * false just because you visited the Connection page and came back. */
+  readonly isAwaitingReply = computed(() => this.chatActivity.isWorking(this.sessionId() ?? DRAFT_SESSION_KEY));
 
   /** Built once from the user's saved ADO settings (see AdoSettingsService) and handed down to every
    * MessageItem so it can render real, clickable "open in Azure DevOps" links for work item ids -
@@ -61,7 +73,7 @@ export class MessageThread {
    * back to plain, unlinked "#123" text in that case rather than a broken link). */
   readonly adoWorkItemBaseUrl = signal<string | null>(null);
 
-  @ViewChild('scrollAnchor') private scrollAnchor?: ElementRef<HTMLDivElement>;
+  @ViewChild('logContainer') private logContainer?: ElementRef<HTMLDivElement>;
 
   /** A reference to the child composer component instance (not its DOM element) - that's what lets
    * the empty state's starter chips drop text into the composer's own field. */
@@ -73,10 +85,32 @@ export class MessageThread {
     this.composer?.prefill(prompt);
   }
 
+  /** Set right before navigating from a draft to the session the composer just created, so the next
+   * loadMessages() call knows to also tell the sidebar about it - see onSessionCreated and
+   * loadMessages' success handler below. */
+  private readonly pendingNewSessionId = signal<string | null>(null);
+
   constructor() {
     effect(() => {
       const id = this.sessionId();
-      this.loadMessages(id);
+      // Re-run this effect even when `id` itself hasn't changed (e.g. "New Conversation" clicked again
+      // while already on the bare /chat route) - reading resetToken() is what makes that happen.
+      this.newChatService.resetToken();
+      // Same "state that outlived its session" bug the working indicator had: this component is reused
+      // across session switches, so an optimistic message added to session A stayed on screen and got
+      // rendered into session B's log until B's fetch came back and replaced it. Dropped synchronously
+      // here rather than waiting for loadMessages' response, which is exactly the window it was visible in.
+      this.pendingMessage.set(null);
+
+      if (id) {
+        this.loadMessages(id);
+      } else {
+        // A draft conversation has nothing to fetch - GET /api/chats/{id} doesn't apply until a real
+        // session exists. Show the same empty/opener state a freshly-created, still-empty session would.
+        this.messages.set([]);
+        this.loading.set(false);
+        this.loadError.set(null);
+      }
     });
 
     this.adoSettingsService.get().subscribe((settings) => {
@@ -98,6 +132,21 @@ export class MessageThread {
         this.pendingMessage.set(null);
         this.loading.set(false);
         this.scrollToBottom();
+
+        // This GET already has everything the sidebar needs (title, timestamps) to show the entry that
+        // sending the first message just created - reusing it here means the sidebar updates without a
+        // second network call. Only fires for the one load that follows onSessionCreated's navigation,
+        // not on every ordinary open of an existing session (which would wrongly bump it to the top of
+        // a list ordered by UpdatedAt, since opening a session doesn't change UpdatedAt).
+        if (this.pendingNewSessionId() === sessionId) {
+          this.pendingNewSessionId.set(null);
+          this.newChatService.notifyCreated({
+            id: detail.id,
+            title: detail.title,
+            createdAt: detail.createdAt,
+            updatedAt: detail.updatedAt,
+          });
+        }
       },
       error: () => {
         this.loading.set(false);
@@ -112,8 +161,14 @@ export class MessageThread {
    * {sessionId, reply} (no id/timestamp for the persisted messages), so re-fetching is the simplest
    * way to get the authoritative, fully-populated message list back - acceptable for a QA-internal
    * tool's message volume, though a high-traffic chat app would want to append optimistically instead. */
-  onMessageSent(): void {
-    this.loadMessages(this.sessionId());
+  onMessageSent(sessionId: string): void {
+    // A reply can land after the user has already opened a different conversation. Reloading
+    // `this.sessionId()` on any completion meant a slow reply in session A triggered a redundant
+    // refetch of whichever session was on screen, so guard on the id the composer actually sent to.
+    if (sessionId !== this.sessionId()) {
+      return;
+    }
+    this.loadMessages(sessionId);
   }
 
   /** Builds a throwaway ChatMessageView for the pending bubble - never sent anywhere, just enough shape
@@ -142,13 +197,36 @@ export class MessageThread {
     if (awaiting) {
       this.scrollToBottom();
     }
+  /** The composer's sessionId() was null and it just sent the first message of a brand-new
+   * conversation - the backend created a real session as a side effect of that single call (see
+   * ChatService.sendMessage's doc comment). Navigate there: the route change updates this component's
+   * own `sessionId` input, which re-runs the constructor's effect and loads the new session for real. */
+  onSessionCreated(newSessionId: string): void {
+    this.pendingNewSessionId.set(newSessionId);
+    this.router.navigate(['/chat', newSessionId]);
   }
 
   private scrollToBottom(): void {
-    // Wait a tick for Angular to actually render the new messages into the DOM before trying to
-    // scroll to an element that (from the browser's perspective) doesn't exist yet.
-    queueMicrotask(() => {
-      this.scrollAnchor?.nativeElement.scrollIntoView({ behavior: 'smooth' });
-    });
+    // afterNextRender (not queueMicrotask, which this used to be) is the one API that's actually
+    // guaranteed to run AFTER Angular has painted the change to the DOM. queueMicrotask just races
+    // Angular's own zoneless rendering scheduler - which also runs via a microtask - with no
+    // guarantee ours goes second. Losing that race meant we'd measure/scroll against the OLD layout
+    // (the container had just been torn down by `loading()` flipping true then false around the
+    // reload), so the browser's default "new content resets scrollTop to 0" behavior is what actually
+    // won, and the log was left sitting at the top instead of following the new message down.
+    //
+    // Setting scrollTop directly (not scrollAnchor.scrollIntoView({behavior:'smooth'}), which this
+    // used to be) instead of a smooth animated scroll: a long reply's text can still be reflowing
+    // for a moment after this fires, and an in-progress smooth scroll doesn't re-target itself as
+    // that happens - it was landing short of the true bottom. An instant jump has no such window.
+    afterNextRender(
+      () => {
+        const el = this.logContainer?.nativeElement;
+        if (el) {
+          el.scrollTop = el.scrollHeight;
+        }
+      },
+      { injector: this.injector },
+    );
   }
 }

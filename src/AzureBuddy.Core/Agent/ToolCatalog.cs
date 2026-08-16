@@ -3,8 +3,10 @@ using AzureBuddy.Core.Llm.Models;
 
 namespace AzureBuddy.Core.Agent;
 
-/// <summary>Builds the AgentTool list, one per n8n ai_tool node. Descriptions are ported verbatim from
-/// each httpRequestTool node's toolDescription - the model leans on this exact wording.</summary>
+/// <summary>Builds the AgentTool list, one per n8n ai_tool node. Descriptions started as verbatim ports
+/// of each httpRequestTool node's toolDescription - the model leans on this exact wording - but they are
+/// now maintained here rather than kept frozen: the n8n originals assumed a large hosted model, and the
+/// thinner ones caused visible tool-selection failures on the self-hosted model this app can fall back to.</summary>
 public sealed class ToolCatalog
 {
     private readonly AdoWorkItemToolset _toolset;
@@ -21,7 +23,11 @@ public sealed class ToolCatalog
             Definition = new ToolDefinition
             {
                 Name = "search_work_items",
-                Description = "Search any workitem using name",
+                // Was "Search any workitem using name" - four words, against 1-3 explicit sentences on
+                // every other tool. A small local model reading the catalog had almost nothing telling it
+                // WHEN to reach for this, so a plain "find me the X story" request pattern-matched to bug
+                // creation and invented a parent_id instead of looking one up.
+                Description = "Use this tool to find work items by their title when the user refers to one by NAME rather than by numerical ID (e.g. 'the login page story', 'the SOA report task'). This is the ONLY way to turn a name into an id: call it before any tool that needs a numerical id, and never guess an id yourself. Provide one argument named name containing just the 1-2 most distinctive keywords from the title. Returns the matching work items with their ids, titles, and types; if nothing matches it returns found: 0, which means the search worked and there are genuinely no matches - report that plainly rather than inventing an item.",
                 ParametersSchema = Schema(("name", "string", "Concise search phrase - plain keyword(s) from the work item title only. No WIQL, no JSON, no quotes."))
             },
             InvokeAsync = _toolset.SearchWorkItemsAsync
@@ -60,7 +66,7 @@ public sealed class ToolCatalog
             Definition = new ToolDefinition
             {
                 Name = "get_work_item_details",
-                Description = "Use this tool to get the Title and State of Azure DevOps work items. You must provide a single argument named ids, which must be a comma-separated list of numerical IDs (e.g., '12172,12171'). Always use this tool immediately after getting IDs from the get_linked_items tool so you can provide the user with the actual titles and statuses.",
+                Description = "Use this tool to get the Title, State, Priority, Start Date, and Due Date of Azure DevOps work items (the response also includes an 'overdue' boolean, already computed). You must provide a single argument named ids, which must be a comma-separated list of numerical IDs (e.g., '12172,12171'). Always use this tool immediately after getting IDs from the get_linked_items tool so you can provide the user with the actual titles and statuses.",
                 ParametersSchema = Schema(("ids", "string", "Comma-separated list of numerical work item IDs ONLY - digits and commas, nothing else, e.g. 12172,12171. Reformat cleanly even if the user wrote it with \"and\"/periods/other separators. Use the exact ids returned by get_linked_items - never guess."))
             },
             InvokeAsync = _toolset.GetWorkItemDetailsAsync
@@ -70,7 +76,7 @@ public sealed class ToolCatalog
             Definition = new ToolDefinition
             {
                 Name = "update_work_item",
-                Description = "Use this tool to update an existing Azure DevOps work item (Bug, Task, User Story, etc). Provide 'id' (the numerical work item ID, required) and at least one of: 'state' (new state, e.g. 'Active', 'Resolved', 'Closed') or 'comment' (text to append to the work item's discussion/history). NEVER hallucinate an id - get it from search_work_items or get_linked_items tool first.",
+                Description = "Use this tool to update an existing Azure DevOps work item (Bug, Task, User Story, etc). Provide 'id' (the numerical work item ID, required) and at least one of: 'state' (new state, e.g. 'Active', 'Resolved', 'Closed') or 'comment' (text to append to the work item's discussion/history). NEVER hallucinate an id - get it from search_work_items or get_linked_items tool first. If 'state' isn't one of this project's admin-configured valid states for that item's type, this returns an error with a validStates list instead of updating anything - relay that list to the user and ask which they want, don't retry with a guess.",
                 ParametersSchema = Schema(
                     required: new[] { "id" },
                     ("id", "string", "Verified numerical work item id to update. Never guess."),
@@ -84,10 +90,24 @@ public sealed class ToolCatalog
             Definition = new ToolDefinition
             {
                 Name = "get_my_work_items",
-                Description = "Use this tool to list work items assigned to the current user (the account behind the configured Azure DevOps credential). Optionally provide 'state' (e.g. 'Active', 'Resolved') to filter to one state; if omitted, returns all non-Closed items assigned to the user. Do not pass any other arguments.",
-                ParametersSchema = Schema(("state", "string", "Optional single state to filter by, e.g. 'Active', 'Resolved'. Leave blank to get all non-Closed items."))
+                Description = "Use this tool to list work items assigned to the current user (the account behind the configured Azure DevOps credential), including each item's Priority, Start Date, Due Date, and a computed 'overdue' flag. Optionally provide 'state' (e.g. 'Active', 'Resolved') to filter to one state; if omitted, returns all non-Closed items assigned to the user. Optionally provide 'work_item_type' (e.g. 'Bug', 'Task', 'User Story') when the user asked for one specific type - e.g. 'bugs assigned to me' MUST pass work_item_type='Bug', or the result will wrongly include every type. Returns items in whatever order Azure DevOps gave them - use get_prioritized_work_items instead if the user wants them ranked by urgency. Do not pass any other arguments.",
+                ParametersSchema = Schema(
+                    ("state", "string", "Optional single state to filter by, e.g. 'Active', 'Resolved'. Leave blank to get all non-Closed items."),
+                    ("work_item_type", "string", "Optional single work item type to filter by, e.g. 'Bug', 'Task', 'User Story'. Leave blank to get every type - only set this when the user actually named a type."))
             },
             InvokeAsync = _toolset.GetMyWorkItemsAsync
+        },
+        new AgentTool
+        {
+            Definition = new ToolDefinition
+            {
+                Name = "get_prioritized_work_items",
+                Description = "Use this tool when the user asks what to work on first/next, or which of their own assigned items are most urgent/overdue/pressing (e.g. 'what should I work on first', 'what's most urgent', 'prioritize my work items'). Returns the same assigned items as get_my_work_items (Priority, Start Date, Due Date, overdue flag) but already sorted most-to-least urgent: overdue items first regardless of priority, then by Priority number ascending (1=highest), then by how soon the due date is - items with no due date come last, ordered by priority among themselves. Present the results as a table in that order and don't re-sort them yourself. Optionally provide 'state' to filter to one status first, and/or 'work_item_type' (e.g. 'Bug') when the user asked to prioritize just one type.",
+                ParametersSchema = Schema(
+                    ("state", "string", "Optional single state to filter by, e.g. 'Active', 'Resolved'. Leave blank to get all non-Closed items."),
+                    ("work_item_type", "string", "Optional single work item type to filter by, e.g. 'Bug', 'Task', 'User Story'. Leave blank to get every type - only set this when the user actually named a type."))
+            },
+            InvokeAsync = _toolset.GetPrioritizedWorkItemsAsync
         },
         new AgentTool
         {

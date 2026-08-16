@@ -1,6 +1,12 @@
+using AzureBuddy.Core.Agent;
 using AzureBuddy.Core.Intent;
+using AzureBuddy.Core.Llm.Models;
 using AzureBuddy.Core.Routing.Flows;
 using AzureBuddy.Data.Entities;
+// AzureBuddy.Data.Entities (for ChatMessageRole/ChatMessageType below) and Llm.Models both declare a
+// ChatMessage type - this alias is what RouteAsync uses to build entries for the agent's own
+// in-memory ChatHistory, not the persisted database entity.
+using LlmChatMessage = AzureBuddy.Core.Llm.Models.ChatMessage;
 
 namespace AzureBuddy.Core.Routing;
 
@@ -16,7 +22,9 @@ public sealed class IntentRouter
     private readonly ViewBugsFlow _viewBugsFlow;
     private readonly UpdateItemFlow _updateItemFlow;
     private readonly MyItemsFlow _myItemsFlow;
+    private readonly GetPrioritizedWorkItemsFlow _getPrioritizedWorkItemsFlow;
     private readonly IConversationalAgent _agent;
+    private readonly ChatHistoryStore _historyStore;
 
     public IntentRouter(
         IntentExtractor intentExtractor,
@@ -24,32 +32,58 @@ public sealed class IntentRouter
         ViewBugsFlow viewBugsFlow,
         UpdateItemFlow updateItemFlow,
         MyItemsFlow myItemsFlow,
-        IConversationalAgent agent)
+        GetPrioritizedWorkItemsFlow getPrioritizedWorkItemsFlow,
+        IConversationalAgent agent,
+        ChatHistoryStore historyStore)
     {
         _intentExtractor = intentExtractor;
         _createBugFlow = createBugFlow;
         _viewBugsFlow = viewBugsFlow;
         _updateItemFlow = updateItemFlow;
         _myItemsFlow = myItemsFlow;
+        _getPrioritizedWorkItemsFlow = getPrioritizedWorkItemsFlow;
         _agent = agent;
+        _historyStore = historyStore;
     }
 
     public async Task<ChatReply> RouteAsync(string sessionId, string userMessage, CancellationToken cancellationToken = default)
     {
         var extracted = await _intentExtractor.ExtractAsync(userMessage, cancellationToken);
 
-        var flowResult = extracted.Intent switch
-        {
-            ChatIntent.CreateBug => await _createBugFlow.ExecuteAsync(extracted, cancellationToken),
-            ChatIntent.ViewBugs => await _viewBugsFlow.ExecuteAsync(extracted, cancellationToken),
-            ChatIntent.UpdateItem => await _updateItemFlow.ExecuteAsync(extracted, cancellationToken),
-            ChatIntent.MyItems => await _myItemsFlow.ExecuteAsync(extracted, cancellationToken),
-            _ => FlowResult.FallThroughToAgent()
-        };
+        // Every deterministic flow below can only act on the single request `extracted.Intent`
+        // captures. A message that asks for more than one thing ("file a bug for X and show my open
+        // items") would otherwise silently answer one half and drop the other - so route those
+        // straight to the full conversational agent, which reasons over the whole raw message and can
+        // make multiple tool calls in one turn.
+        var flowResult = extracted.HasAdditionalRequest
+            ? FlowResult.FallThroughToAgent()
+            : extracted.Intent switch
+            {
+                ChatIntent.CreateBug => await _createBugFlow.ExecuteAsync(extracted, cancellationToken),
+                ChatIntent.ViewBugs => await _viewBugsFlow.ExecuteAsync(extracted, cancellationToken),
+                ChatIntent.UpdateItem => await _updateItemFlow.ExecuteAsync(extracted, cancellationToken),
+                ChatIntent.MyItems => await _myItemsFlow.ExecuteAsync(extracted, cancellationToken),
+                ChatIntent.PrioritizeWorkItems => await _getPrioritizedWorkItemsFlow.ExecuteAsync(extracted, cancellationToken),
+                _ => FlowResult.FallThroughToAgent()
+            };
 
         if (flowResult.Handled)
         {
-            return EnsureNonEmpty(flowResult.Output, flowResult.Type, flowResult.WorkItemId, flowResult.TableHeaders, flowResult.TableRows);
+            var reply = EnsureNonEmpty(flowResult.Output, flowResult.Type, flowResult.WorkItemId, flowResult.TableHeaders, flowResult.TableRows);
+
+            // A deterministic flow just answered this turn without ever going through
+            // AzureBuddyAgent - but a LATER turn ("summarize these", "what about #12352 specifically")
+            // might fall through to the agent and need to know what was just shown. Recording the turn
+            // into the same per-session ChatHistory the agent reads from (keyed by this same
+            // sessionId - see ChatController's comment on that) keeps the agent's memory a complete
+            // record of the conversation, not just the turns it happened to handle itself. The reply
+            // text already has the rendered markdown table baked in (see MyItemsFlow/ViewBugsFlow), so
+            // the agent can literally read the ids/titles/states straight out of its own history.
+            var history = _historyStore.GetOrCreate(sessionId);
+            history.Add(LlmChatMessage.User(userMessage));
+            history.Add(LlmChatMessage.Assistant(reply.Text));
+
+            return reply;
         }
 
         // The free-form conversational agent (AzureBuddyAgent) generates its replies as its own prose -
@@ -73,7 +107,10 @@ public sealed class IntentRouter
         IReadOnlyList<IReadOnlyList<string>>? tableRows = null) =>
         string.IsNullOrWhiteSpace(text)
             ? new ChatReply(
-                "Sorry, I'm having trouble processing that right now (both the primary and fallback models failed to respond). Please try again in a moment.",
+                // Deliberately doesn't say "both the primary and fallback models" - how many providers
+                // are configured is an admin setting (often just one), so naming two invents detail the
+                // reader can act on wrongly, sending them to check a fallback that doesn't exist.
+                "Sorry, I couldn't get a response from the AI model just now. It may be slow to respond or unreachable - please try again in a moment, or check the model settings if this keeps happening.",
                 ChatMessageType.Error)
             : new ChatReply(text.Trim(), type, workItemId, tableHeaders, tableRows);
 }
