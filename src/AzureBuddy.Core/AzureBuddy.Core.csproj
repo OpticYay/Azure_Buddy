@@ -20,4 +20,8 @@
     <ProjectReference Include="..\AzureBuddy.Data\AzureBuddy.Data.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="AzureBuddy.Tests" />
+  </ItemGroup>
+
 </Project>
