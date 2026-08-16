@@ -49,9 +49,13 @@ environment variables / `dotnet user-secrets` locally:
 | `Jwt:SigningKey` | Random secret (32+ bytes) used to sign/verify JWT access tokens. Treat like a password - a leaked signing key lets anyone mint valid tokens for any user. |
 | `Jwt:AccessTokenMinutes` / `Jwt:RefreshTokenDays` | Token lifetimes |
 | `Identity:Password:*`, `Identity:Lockout:*` | Password complexity and lockout policy (see `Microsoft.AspNetCore.Identity.IdentityOptions` for all available keys) |
-| `DataProtection:KeyPath` | Filesystem folder where the encryption keys protecting stored ADO PATs are kept. **Back this up** - losing it makes every stored PAT permanently undecryptable (users would need to re-enter them). In a multi-instance deployment this must be a *shared* location (mounted volume, or switch to `PersistKeysToDbContext`/Azure Blob storage), not local disk per instance. |
+| `DataProtection:KeyPath` | Filesystem folder where the encryption keys protecting stored ADO PATs/LLM API keys are kept, used only when `Redis:Configuration` is blank. **Back this up** - losing it makes every stored PAT/API key permanently undecryptable (users would need to re-enter them). In a multi-instance deployment without Redis this must be a *shared* location (mounted volume), not local disk per instance - or better, configure Redis instead (see "Horizontal scaling" below). |
 | `Ado:ApiVersion` | Azure DevOps REST API version (e.g. `7.1`) - the only ADO setting that's still global; org/project/PAT are per-user now (see below) |
 | `Llm:Providers`, `Llm:Gemini:*`, `Llm:Ollama:*` | LLM provider fallback chain and per-provider settings (unchanged from the original n8n-ported design) |
+| `Redis:Configuration` | StackExchange.Redis connection string, e.g. `localhost:6379`. Leave blank to run entirely in-memory/per-instance - the app works unmodified single-instance with zero Redis. Required to run more than one API replica (see "Horizontal scaling" below). |
+| `Redis:InstanceName` | Key prefix for everything this app writes to Redis, so one Redis instance can safely be shared with other apps. Defaults to `azurebuddy:`. |
+| `Redis:ChatWindowTtlHours` | How long a cached chat conversation window survives in Redis with no activity before falling back to re-reading recent history from MySQL. Defaults to `24`. |
+| `Network:KnownProxies` | JSON array of trusted reverse-proxy/load-balancer IPs, e.g. `["10.0.0.5"]`. Empty by default, meaning `X-Forwarded-For` is ignored and the auth rate limiter partitions by the direct connection's own IP. Only add an entry here for a proxy you control - trusting the wrong one lets a client spoof their own rate-limit partition. |
 
 ### Database
 
@@ -72,15 +76,49 @@ dotnet ef database update --project src/AzureBuddy.Data --startup-project src/Az
 ```
 
 API is then reachable at `http://localhost:8080`. `docker-compose.yml` wires up the API, a MySQL
-container, and two named volumes - one for MySQL's data directory, one for the Data Protection keys
-that encrypt stored ADO PATs (mounted so it survives `docker compose down`/container recreation;
-without it every restart would generate fresh keys and every previously-stored PAT would become
-unreadable). MySQL's host-published port defaults to 3307, not 3306, to avoid colliding with a MySQL
+container, a Redis container, and three named volumes - one for MySQL's data directory, one for
+Redis's AOF persistence file, one for the Data Protection keys that encrypt stored ADO PATs/LLM API
+keys (mounted so it survives `docker compose down`/container recreation; without it every restart
+would generate fresh keys and every previously-stored PAT would become unreadable - though with Redis
+configured, as it is by default in this compose file, keys live in Redis instead and this volume goes
+unused). MySQL's host-published port defaults to 3307, not 3306, to avoid colliding with a MySQL
 already running locally - override `MYSQL_PORT` in `.env` if that's also taken.
 
 `Dockerfile` on its own (no compose) builds just the API image; see its comments for the full
 `docker build`/`docker run` flow and why config is passed as environment variables rather than baked
 into the image.
+
+### Horizontal scaling
+
+The app runs unmodified as a single instance with zero Redis configured - `Redis:Configuration` blank
+is the default in `appsettings.Example.json`, and everything (chat history, Data Protection keys, LLM
+settings hot-reload) falls back to today's in-memory/per-instance behavior. Scaling beyond one replica
+requires Redis, because a per-process `ConcurrentDictionary`/local file system can't be shared across
+processes: a second replica behind a load balancer would otherwise silently lose conversational
+context, be unable to decrypt PATs the first replica encrypted, and never see an admin's saved LLM
+settings change.
+
+**Try it locally**: `docker compose --profile scale up -d --build` starts `mysql`, `redis`, `api`
+(port 8080), and `api2` (port 8081) - two replicas of the same image, both pointed at the same MySQL
+database and the same Redis instance. Start a chat session against `:8080`, send a follow-up message
+against `:8081`, and the second reply is generated with full context from the first - the same
+behavior `TwoReplicaChatContinuityTests` proves in the test suite. `api2` is behind a `scale` compose
+profile (not started by a plain `docker compose up`) since a normal single-instance dev/demo setup
+doesn't need it.
+
+**Migrating an existing single-instance deployment to Redis**: setting `Redis:Configuration` on an
+already-running deployment does NOT automatically move Data Protection keys already sitting on disk -
+a fresh Redis-backed key ring starts empty, and every PAT/API key encrypted under the old filesystem
+key ring becomes unreadable the moment the switch flips. Migrate the key ring first:
+
+1. Take note of the filesystem path from `DataProtection:KeyPath` (defaults to `DataProtection-Keys`
+   relative to the API's working directory).
+2. With Redis reachable and before switching `Redis:Configuration` on for the live app, run
+   `DataProtectionKeyImporter.ImportAsync(keyDirectoryPath, multiplexer, $"{instanceName}DataProtection-Keys")`
+   (see `AzureBuddy.Core.Caching.DataProtectionKeyImporter`) - a small console/script invocation is
+   enough, it's idempotent so re-running it after a partial failure is safe.
+3. Set `Redis:Configuration` (and restart the app) once the import has run. Existing PATs/API keys now
+   decrypt correctly, and every replica going forward shares this same key ring.
 
 ### Endpoints
 
@@ -107,6 +145,13 @@ All other endpoints require `Authorization: Bearer <accessToken>`.
 
 **Live chat** (`chat`, same conversational flow as the original n8n workflow, now authenticated and persisted):
 - `POST /chat` — `{ sessionId?, message }` → `{ sessionId, reply }`. Omit `sessionId` to start a new session.
+
+**Health** (no token required):
+- `GET /health/live` — always 200 once the process is up; runs no dependency checks. For an
+  orchestrator's liveness probe - failing it triggers a container restart, so it must never fail for a
+  reason a restart can't fix.
+- `GET /health/ready` — 200 only if MySQL (and Redis, when configured) are reachable. For readiness/load
+  balancer checks - failing it should stop traffic to this replica without restarting it.
 
 ### Known shortcuts / deferred (v1)
 

@@ -22,6 +22,32 @@ services:
       timeout: 5s
       retries: 20
 
+  # Shared cache for chat history, Data Protection keys, and LLM settings pub/sub across replicas - see
+  # README's "Horizontal scaling" section. Not required to run a single `api` instance (everything falls
+  # back to in-memory/per-instance behavior with no Redis:Configuration set), but required for `api2`
+  # below to actually behave like a second replica of the same deployment rather than an isolated one.
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    # AOF (append-only file), not RDB snapshotting: RDB only saves at intervals, so a crash between
+    # snapshots loses everything written since - including Data Protection keys, which have no other
+    # backing store once Redis is the source for them. AOF durability trades some write throughput for
+    # not losing PAT/API-key decryptability across a Redis restart.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Deliberately no --maxmemory or --maxmemory-policy: Redis's default (noeviction, unbounded) is the
+    # only safe choice here. Any eviction policy (allkeys-lru, volatile-lru, etc.) can silently drop
+    # Data Protection keys - which have no TTL and no other backing store - the moment memory pressure
+    # hits, turning every already-encrypted PAT/API key permanently unreadable with no warning. Chat
+    # windows already self-bound via Redis:ChatWindowTtlHours; nothing else in this app writes enough
+    # data to Redis for unbounded growth to be a realistic concern at this scale.
+
   api:
     build:
       context: .
@@ -30,22 +56,55 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "8080:8080"
     environment:
-      # "mysql" resolves via the compose network's built-in DNS - no host.docker.internal or fixed
-      # IP needed, and it stays correct regardless of which host this is deployed to.
+      # "mysql"/"redis" resolve via the compose network's built-in DNS - no host.docker.internal or
+      # fixed IP needed, and it stays correct regardless of which host this is deployed to.
       ConnectionStrings__DefaultConnection: "server=mysql;port=3306;database=${MYSQL_DATABASE:-azurebuddy};user=${MYSQL_USER:-azurebuddy};password=${MYSQL_PASSWORD:-azurebuddy}"
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY in .env - see .env.example}
+      Redis__Configuration: "redis:6379"
       Llm__Providers__0: Gemini
       Llm__Providers__1: Ollama
       Llm__Gemini__ApiKey: ${GEMINI_API_KEY:-}
     volumes:
-      # Data Protection keys (encrypt stored ADO PATs) must survive container recreation - without a
-      # named volume here, every `docker compose up --build` would generate fresh keys and every
-      # previously-encrypted PAT would become permanently unreadable. See README's DataProtection note.
+      # Data Protection keys now live in Redis (see Redis__Configuration above and Program.cs's
+      # PersistKeysToStackExchangeRedis branch), so this volume is unused when Redis is configured -
+      # kept only as the fallback path's storage if Redis__Configuration is ever cleared.
+      - dp-keys:/app/DataProtection-Keys
+
+  # A second replica of the exact same image/config as `api`, proving out the horizontal-scaling story
+  # this whole Redis effort exists for: run `docker compose --profile scale up` (the `scale` profile
+  # keeps this out of a plain `docker compose up`, since one replica is all a normal dev/demo setup
+  # needs) and both `api` and `api2` serve traffic against the same MySQL database and the same
+  # Redis-backed chat/Data-Protection/LLM-settings state - a conversation started against one is
+  # visible from the other, exactly like TwoReplicaChatContinuityTests proves in the test suite.
+  api2:
+    profiles: ["scale"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+    environment:
+      ConnectionStrings__DefaultConnection: "server=mysql;port=3306;database=${MYSQL_DATABASE:-azurebuddy};user=${MYSQL_USER:-azurebuddy};password=${MYSQL_PASSWORD:-azurebuddy}"
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY in .env - see .env.example}
+      Redis__Configuration: "redis:6379"
+      Llm__Providers__0: Gemini
+      Llm__Providers__1: Ollama
+      Llm__Gemini__ApiKey: ${GEMINI_API_KEY:-}
+    volumes:
       - dp-keys:/app/DataProtection-Keys
 
 volumes:
   mysql-data:
+  redis-data:
   dp-keys:
