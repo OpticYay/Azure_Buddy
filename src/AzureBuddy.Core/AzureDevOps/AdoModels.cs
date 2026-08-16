@@ -47,6 +47,21 @@ public sealed class WorkItem
     public string? State => GetField("System.State");
     public string? Description => GetField("System.Description");
     public string? ReproSteps => GetField("Microsoft.VSTS.TCM.ReproSteps");
+    public string? StartDate => GetField(AdoFields.StartDate);
+
+    /// <summary>
+    /// The due/target/finish date, whichever this work item type's process template actually
+    /// populates - different Azure DevOps templates (Agile/Scrum/CMMI) and different work item types
+    /// within the same template use different field reference names for "when is this due"
+    /// (Microsoft.VSTS.Scheduling.TargetDate on Feature/Epic, .FinishDate on Agile/CMMI Task/Bug,
+    /// .DueDate on some Scrum configurations). Rather than hardcode one and silently miss the others,
+    /// every candidate is fetched and this returns whichever one is actually set, in that priority
+    /// order. ADO's workitemsbatch API simply omits fields that don't apply to a given item's type
+    /// rather than erroring, so requesting all three candidates is always safe.
+    /// </summary>
+    public string? DueDate => GetField(AdoFields.TargetDate) ?? GetField(AdoFields.DueDate) ?? GetField(AdoFields.FinishDate);
+
+    public string? Priority => GetField(AdoFields.Priority);
 
     private string? GetField(string name) =>
         Fields.TryGetValue(name, out var value) ? value?.ToString() : null;
@@ -86,4 +101,15 @@ public static class AdoFields
     public const string CreatedDate = "System.CreatedDate";
     public const string ChangedDate = "System.ChangedDate";
     public const string Parent = "System.Parent";
+    public const string StartDate = "Microsoft.VSTS.Scheduling.StartDate";
+    /// <summary>Feature/Epic-level "due" field in every standard process template.</summary>
+    public const string TargetDate = "Microsoft.VSTS.Scheduling.TargetDate";
+    /// <summary>Some Scrum-derived process templates use this name instead of TargetDate.</summary>
+    public const string DueDate = "Microsoft.VSTS.Scheduling.DueDate";
+    /// <summary>Agile/CMMI Task and Bug "due" field - see WorkItem.DueDate for the fallback order.</summary>
+    public const string FinishDate = "Microsoft.VSTS.Scheduling.FinishDate";
+
+    /// <summary>All three due-date candidate field names, for a single fields= request that covers
+    /// whichever one this work item type/process template actually uses.</summary>
+    public static readonly string[] DueDateCandidates = { TargetDate, DueDate, FinishDate };
 }

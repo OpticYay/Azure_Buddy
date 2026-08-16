@@ -7,5 +7,6 @@ public enum ChatIntent
     ViewBugs,
     UpdateItem,
     MyItems,
+    PrioritizeWorkItems,
     Other
 }

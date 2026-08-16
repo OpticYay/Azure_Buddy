@@ -41,8 +41,16 @@ public sealed class ChatSessionService
         page = Math.Max(page, 1);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
+        // A session with zero messages isn't a conversation that happened - it's either the frontend's
+        // "New Conversation" button used to create one eagerly on click, before the user had typed
+        // anything (fixed - the frontend no longer does this, see ChatController.PostAsync's null
+        // SessionId path), or the tail of some other create-then-append flow that got interrupted
+        // between the two calls (e.g. a screenshot upload that fails right after its session was
+        // created). Either way it has no content worth showing, so it's excluded here defensively -
+        // this filter is what keeps that class of bug from ever being visible again, independent of
+        // whether every path that CREATES a session is currently well-behaved.
         var query = _dbContext.ChatSessions
-            .Where(s => s.UserId == userId)
+            .Where(s => s.UserId == userId && s.Messages.Any())
             .OrderByDescending(s => s.UpdatedAt);
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -76,6 +84,52 @@ public sealed class ChatSessionService
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return ToDetail(session);
+    }
+
+    /// <summary>Sets a session's title directly, overriding whatever the "first message becomes the
+    /// title" default (see SaveNewMessageAsync) produced - the one thing that auto-titling can't do is
+    /// know what the user would ACTUALLY call the conversation. A blank title falls back to
+    /// DefaultTitle rather than saving an empty string, same as CreateSessionAsync's own handling of
+    /// an unspecified title. Doesn't touch UpdatedAt - renaming is a metadata edit, not conversation
+    /// activity, so it shouldn't reorder the session list the way a new message does.</summary>
+    public async Task<ChatSessionSummary?> RenameSessionAsync(
+        string userId, Guid sessionId, string title, CancellationToken cancellationToken = default)
+    {
+        var session = await _dbContext.ChatSessions
+            .SingleOrDefaultAsync(s => s.Id == sessionId && s.UserId == userId, cancellationToken);
+
+        if (session is null)
+        {
+            return null;
+        }
+
+        var trimmed = title.Trim();
+        session.Title = trimmed.Length == 0 ? DefaultTitle : Truncate(trimmed);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new ChatSessionSummary(session.Id, session.Title, session.CreatedAt, session.UpdatedAt);
+    }
+
+    /// <summary>Removes every one of this user's sessions that has zero messages. Safe to delete
+    /// unconditionally - a session with no messages represents no conversation that ever actually
+    /// happened, the same judgment ListSessionsAsync's filter above makes. This is what actually clears
+    /// out rows a client already created-then-abandoned (the old eager "New Conversation" click, or a
+    /// screenshot upload that fails between creating its session and appending the message) rather than
+    /// just hiding them from the list forever.</summary>
+    public async Task<int> DeleteEmptySessionsAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        var empty = await _dbContext.ChatSessions
+            .Where(s => s.UserId == userId && !s.Messages.Any())
+            .ToListAsync(cancellationToken);
+
+        if (empty.Count == 0)
+        {
+            return 0;
+        }
+
+        _dbContext.ChatSessions.RemoveRange(empty);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return empty.Count;
     }
 
     /// <summary>True if a session with this id exists and belongs to the caller (used by controllers

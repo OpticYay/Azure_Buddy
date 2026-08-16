@@ -65,11 +65,31 @@ public sealed class ChatsController : ControllerBase
         return Created($"/api/chats/{session.Id}", session);
     }
 
+    [HttpPut("{sessionId:guid}/title")]
+    public async Task<ActionResult<ChatSessionSummary>> RenameAsync(
+        Guid sessionId, RenameSessionRequest request, CancellationToken cancellationToken)
+    {
+        var renamed = await _chatSessionService.RenameSessionAsync(User.GetRequiredUserId(), sessionId, request.Title, cancellationToken);
+        return renamed is null ? NotFound() : Ok(renamed);
+    }
+
     [HttpDelete("{sessionId:guid}")]
     public async Task<IActionResult> DeleteAsync(Guid sessionId, CancellationToken cancellationToken)
     {
         var deleted = await _chatSessionService.DeleteSessionAsync(User.GetRequiredUserId(), sessionId, cancellationToken);
         return deleted ? NoContent() : NotFound();
+    }
+
+    /// <summary>Cleanup for sessions that got created but never received a first message - see
+    /// ChatSessionService.DeleteEmptySessionsAsync. Scoped to the caller's own sessions like every other
+    /// action here, not a global admin sweep, so this can only ever clean up the caller's own clutter.
+    /// The literal "empty" segment is unambiguous against {sessionId:guid} above - "empty" can never
+    /// parse as a Guid, so routing always resolves to this action rather than that one.</summary>
+    [HttpDelete("empty")]
+    public async Task<ActionResult<int>> DeleteEmptyAsync(CancellationToken cancellationToken)
+    {
+        var count = await _chatSessionService.DeleteEmptySessionsAsync(User.GetRequiredUserId(), cancellationToken);
+        return Ok(count);
     }
 
     /// <summary>

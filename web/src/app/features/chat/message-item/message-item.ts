@@ -2,6 +2,7 @@ import { Component, computed, input } from '@angular/core';
 import { DatePipe } from '@angular/common';
 
 import { DisplayMessage } from '../../../core/models/display-message.model';
+import { MarkdownLitePipe } from '../../../shared/markdown-lite.pipe';
 
 // This renders as a typed log entry rather than a chat bubble: the backend tags every message with a
 // real type (Text, Table, Confirmation, Error - see ChatMessageType), and the most valuable of those
@@ -9,7 +10,7 @@ import { DisplayMessage } from '../../../core/models/display-message.model';
 // speech balloon. Each entry instead carries a role, a state tag, and a timestamp.
 @Component({
   selector: 'app-message-item',
-  imports: [DatePipe],
+  imports: [DatePipe, MarkdownLitePipe],
   templateUrl: './message-item.html',
   styleUrl: './message-item.css',
 })

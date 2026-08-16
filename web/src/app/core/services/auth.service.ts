@@ -5,8 +5,12 @@ import { Observable, catchError, finalize, map, of, shareReplay, tap, throwError
 import { environment } from '../../../environments/environment';
 import {
   AuthTokens,
+  ConfirmEmailRequest,
+  ForgotPasswordRequest,
   LoginRequest,
   RegisterRequest,
+  ResendConfirmationRequest,
+  ResetPasswordRequest,
 } from '../models/auth.models';
 
 const REFRESH_TOKEN_STORAGE_KEY = 'azurebuddy_refresh_token';
@@ -57,6 +61,33 @@ export class AuthService {
     return this.http
       .post<AuthTokens>(`${environment.apiUrl}/api/auth/login`, request)
       .pipe(tap((tokens) => this.applySession(tokens)));
+  }
+
+  /** Always resolves (204) whether or not the email has an account - see the backend's
+   * AuthService.ForgotPasswordAsync docs for why. The caller should show the same "check your email"
+   * message either way, never branch UI on this succeeding vs. failing. */
+  forgotPassword(request: ForgotPasswordRequest): Observable<void> {
+    return this.http.post<void>(`${environment.apiUrl}/api/auth/forgot-password`, request);
+  }
+
+  /** Unlike register/login, a successful reset does NOT call applySession - resetting a password is
+   * not implicitly "log me in on this device", so the returned tokens are intentionally unused here.
+   * The reset-password page sends the user to /login to sign in explicitly with the new password. */
+  resetPassword(request: ResetPasswordRequest): Observable<AuthTokens> {
+    return this.http.post<AuthTokens>(`${environment.apiUrl}/api/auth/reset-password`, request);
+  }
+
+  /** Confirming DOES log the user in immediately (applySession) - unlike resetPassword, clicking a
+   * confirmation link is naturally "I'm here, on this device, right now," so there's no reason to
+   * make them re-enter credentials afterward. */
+  confirmEmail(request: ConfirmEmailRequest): Observable<AuthTokens> {
+    return this.http
+      .post<AuthTokens>(`${environment.apiUrl}/api/auth/confirm-email`, request)
+      .pipe(tap((tokens) => this.applySession(tokens)));
+  }
+
+  resendConfirmation(request: ResendConfirmationRequest): Observable<void> {
+    return this.http.post<void>(`${environment.apiUrl}/api/auth/resend-confirmation`, request);
   }
 
   /** Called once at app startup (see app.config.ts's provideAppInitializer) to turn a still-valid
@@ -126,6 +157,13 @@ export class AuthService {
    * signal's current value directly with `()` rather than through a template binding. */
   getAccessToken(): string | null {
     return this.accessToken();
+  }
+
+  /** Used by AccountService's changePassword call so the backend can spare THIS session's refresh
+   * token from the other-sessions revocation it does on a successful password change - see
+   * ChangePasswordRequest's docs. Null if there's no stored session, same as a logged-out state. */
+  getRefreshToken(): string | null {
+    return localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
   }
 
   clearSession(): void {

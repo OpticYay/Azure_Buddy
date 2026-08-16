@@ -1,4 +1,5 @@
 <div class="auth">
+  <img class="auth__logo" src="/assets/azurebuddy-logo.png" alt="Azure Buddy" width="480" height="261" />
   <form class="card" [formGroup]="form" (ngSubmit)="submit()">
     <!--
       `[formGroup]="form"` (square brackets = property binding) connects this <form> to the
@@ -6,7 +7,7 @@
       method instead of the browser's default full-page form POST.
     -->
     <div class="card__head">
-      <span class="mark">AB</span>
+      <img class="mark" src="/assets/azurebuddy-mark.png" alt="" width="30" height="30" />
       <div>
         <h1>Azure Buddy</h1>
         <p class="tagline">File defects and pull work items without leaving the test</p>
@@ -30,6 +31,8 @@
         <span class="field__error">Enter your password.</span>
       }
     </label>
+
+    <p class="switch"><a routerLink="/forgot-password">Forgot password?</a></p>
 
     @if (errorMessage()) {
       <p class="alert">{{ errorMessage() }}</p>

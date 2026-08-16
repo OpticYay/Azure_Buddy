@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using AzureBuddy.Api;
+using AzureBuddy.Core.Account;
 using AzureBuddy.Core.Agent;
 using AzureBuddy.Core.Auth;
 using AzureBuddy.Core.AzureDevOps;
@@ -10,6 +11,7 @@ using AzureBuddy.Core.Common;
 using AzureBuddy.Core.Llm;
 using AzureBuddy.Core.Routing;
 using AzureBuddy.Core.Settings;
+using AzureBuddy.Core.WorkItemStates;
 using AzureBuddy.Data;
 using AzureBuddy.Data.Entities;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -59,8 +61,11 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 // AllowCredentials is needed because the Angular app sends "Authorization: Bearer <token>" (an
 // Authorization header counts as a credentialed request for CORS purposes even without cookies), and
 // AllowCredentials cannot be combined with AllowAnyOrigin - the origin list must be explicit.
+// Both spellings of the dev server's own address are allowed because either can be what's in the
+// browser's address bar, and the browser sends whichever one it used as the Origin header - a
+// mismatch there is a blocked request, not a fallback. Nothing here depends on which one you use.
 var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-    ?? new[] { "http://localhost:4200" };
+    ?? new[] { "http://localhost:4200", "http://127.0.0.1:4200" };
 
 builder.Services.AddCors(options =>
 {
@@ -215,9 +220,11 @@ builder.Services.AddDataProtection()
 
 builder.Services.AddLlmProviders(builder.Configuration);
 builder.Services.AddAzureDevOps(builder.Configuration);
+builder.Services.AddWorkItemStates();
 builder.Services.AddChatRouting();
 builder.Services.AddAzureBuddyAgent();
 builder.Services.AddAzureBuddyAuth(builder.Configuration);
+builder.Services.AddAzureBuddyAccount();
 builder.Services.AddAdoSettings();
 builder.Services.AddChatHistory();
 

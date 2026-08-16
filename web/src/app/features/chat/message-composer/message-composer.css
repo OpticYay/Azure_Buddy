@@ -8,7 +8,9 @@
 
 .composer__inner {
   width: 100%;
-  max-width: 820px;
+  /* Same token as the log above it (see tokens.css) - these two edges must line up, and they used to
+     be two separate hardcoded copies of the same number. */
+  max-width: var(--chat-column-width);
   margin: 0 auto;
   padding: var(--space-md) var(--space-lg);
   display: flex;

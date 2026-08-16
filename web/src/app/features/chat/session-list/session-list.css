@@ -221,6 +221,43 @@
   color: var(--fail);
 }
 
+.session__rename {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: var(--ink-300);
+  padding: 0 2px;
+}
+
+.session__rename svg {
+  width: 13px;
+  height: 13px;
+}
+
+.session__rename:hover {
+  color: var(--brass-deep);
+}
+
+/* Same box as .session__title (flex: 1, same font) so swapping the row into edit mode doesn't shift
+   anything else in the row - only the title itself changes from static text to an editable field. */
+.session__rename-field {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-bottom: 1px solid var(--brass);
+  background: transparent;
+  padding: 0;
+  color: var(--ink-900);
+  font-family: inherit;
+  font-size: var(--t-sm);
+}
+
+.session__rename-field:focus {
+  outline: none;
+}
+
 .more {
   margin-top: var(--space-xs);
   padding: 6px var(--space-sm);
@@ -255,6 +292,7 @@
    opacity fade used on the labels, because these must not occupy layout space in a 60px rail. */
 .rail.is-collapsed .session__title,
 .rail.is-collapsed .session__time,
+.rail.is-collapsed .session__rename,
 .rail.is-collapsed .session__remove {
   display: none;
 }
