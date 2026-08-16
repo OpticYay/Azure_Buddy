@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -17,6 +18,7 @@ using AzureBuddy.Data;
 using AzureBuddy.Data.Entities;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -208,10 +210,42 @@ builder.Services.AddAuthorization(options =>
         .Build();
 });
 
+// ---- Forwarded headers (trust the real client IP behind a reverse proxy) ----
+// The rate limiter below partitions by HttpContext.Connection.RemoteIpAddress - behind any reverse
+// proxy/load balancer, that's always the PROXY's own IP unless this middleware rewrites it from the
+// X-Forwarded-For header first. KnownNetworks/KnownProxies are cleared rather than left at their
+// ASP.NET Core defaults (which only trust literal loopback) and rather than defaulting to "trust
+// anything": an unconfigured deployment gets today's behavior (every client is rate-limited together
+// under the proxy's IP - wrong, but not attacker-controlled), and Network:KnownProxies must be set to a
+// deployment's actual reverse-proxy IP(s) before X-Forwarded-For is honored at all. Blindly trusting
+// X-Forwarded-For with no configured proxy would let any client set their own "IP" and either dodge the
+// rate limit or frame another client under it.
+var knownProxies = (builder.Configuration.GetSection("Network:KnownProxies").Get<string[]>() ?? Array.Empty<string>())
+    .Select(proxy => IPAddress.TryParse(proxy, out var proxyIp) ? proxyIp : null)
+    .Where(proxyIp => proxyIp is not null)
+    .ToList();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+    foreach (var proxyIp in knownProxies)
+    {
+        options.KnownProxies.Add(proxyIp!);
+    }
+});
+
 // ---- Rate limiting ----
-// Fixed-window limiter on the auth endpoints only: 5 requests per minute per client IP. This is a
-// basic brute-force/registration-spam speed bump, not a substitute for account lockout (Identity's
-// lockout policy above already handles "too many wrong passwords for one account").
+// Fixed-window limiter on the auth endpoints only, partitioned per client IP via AddPolicy/
+// RateLimitPartition.GetFixedWindowLimiter: 5 requests per minute PER IP. This is a basic
+// brute-force/registration-spam speed bump, not a substitute for account lockout (Identity's lockout
+// policy above already handles "too many wrong passwords for one account").
+//
+// This used to be AddFixedWindowLimiter, which creates exactly ONE limiter shared by every caller
+// regardless of who they are - despite the "per client IP" framing, there was no partitioning at all,
+// so five requests from anyone, anywhere, exhausted the shared budget for every other user until the
+// window reset. AddPolicy with a partition key function is what actually makes each IP get its own
+// independent budget.
 //
 // The "Testing" environment gets an effectively unlimited permit count: WebApplicationFactory-based
 // integration tests all originate from the TestServer's single synthetic client IP, so a real-world
@@ -222,12 +256,7 @@ var authRateLimit = builder.Environment.IsEnvironment("Testing") ? int.MaxValue 
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddFixedWindowLimiter(RateLimiterPolicies.Auth, limiterOptions =>
-    {
-        limiterOptions.PermitLimit = authRateLimit;
-        limiterOptions.Window = TimeSpan.FromMinutes(1);
-        limiterOptions.QueueLimit = 0;
-    });
+    options.AddPolicy(RateLimiterPolicies.Auth, httpContext => AuthRateLimiterPolicy.CreatePartition(httpContext, authRateLimit));
 });
 
 // ---- Data Protection (PAT/API-key encryption key storage) ----
@@ -319,8 +348,14 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// Registered first (before routing/auth/anything else that could throw) so it wraps the entire
-// request pipeline - any exception from any downstream middleware or controller gets caught here.
+// Must run before anything that reads Connection.RemoteIpAddress or Request.Scheme - the rate
+// limiter's per-IP partitioning and UseHttpsRedirection below both depend on this having already
+// rewritten them from X-Forwarded-For/X-Forwarded-Proto (when Network:KnownProxies trusts the caller).
+app.UseForwardedHeaders();
+
+// Registered as early as possible (only UseForwardedHeaders runs first, and it never throws) so it
+// wraps the entire request pipeline - any exception from any downstream middleware or controller gets
+// caught here.
 app.UseExceptionHandler();
 
 app.UseHttpsRedirection();
