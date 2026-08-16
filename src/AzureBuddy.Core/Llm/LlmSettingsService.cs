@@ -145,7 +145,12 @@ public sealed class LlmSettingsService
             // Decrypted here, in memory, and handed straight to ILlmSettingsProvider - never logged,
             // never part of any HTTP response. GeminiChatClient reads it back out the same way any
             // config value would be read; there is no second copy of the plaintext anywhere.
-            ApiKey = row.GeminiEncryptedApiKey is null ? string.Empty : _apiKeyProtector.Decrypt(row.GeminiEncryptedApiKey),
+            //
+            // Goes through DecryptSafely, not a raw Decrypt call: this method runs both at app startup
+            // (LoadFromDatabaseIfPresentAsync) and on every settings save, and a lost/rotated Data
+            // Protection key ring must not crash either - it should just mean "this provider falls back
+            // to no API key" rather than an unhandled CryptographicException taking down startup.
+            ApiKey = row.GeminiEncryptedApiKey is null ? string.Empty : DecryptSafely(row.GeminiEncryptedApiKey),
             Model = row.GeminiModel,
             BaseUrl = row.GeminiBaseUrl,
             TimeoutSeconds = row.GeminiTimeoutSeconds,

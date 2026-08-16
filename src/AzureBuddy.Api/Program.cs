@@ -230,18 +230,29 @@ builder.Services.AddRateLimiter(options =>
     });
 });
 
-// ---- Data Protection (PAT encryption key storage) ----
-// By default, Data Protection keys live under the OS user profile, which breaks the moment this app
-// runs in a container or scales to more than one instance (each instance would generate its own key
-// and be unable to decrypt PATs another instance encrypted). Pointing it at an explicit, persistent
-// directory - and in a real multi-instance deployment, a *shared* one (mounted volume, or
-// PersistKeysToDbContext/Azure Blob storage instead of the filesystem) - avoids that. See the README
-// for what happens if this key material is ever lost (short version: every stored PAT becomes
-// permanently unreadable and users must re-enter them).
-var dataProtectionKeyPath = builder.Configuration["DataProtection:KeyPath"] ?? "DataProtection-Keys";
-builder.Services.AddDataProtection()
-    .SetApplicationName("AzureBuddy")
-    .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeyPath));
+// ---- Data Protection (PAT/API-key encryption key storage) ----
+// By default (and always, when Redis isn't configured), Data Protection keys live under an explicit
+// filesystem directory - which breaks the moment this app scales to more than one replica, since each
+// instance would generate its own key ring and be unable to decrypt ciphertext another instance
+// produced (LlmSettingsService.BuildEffectiveOptions and UserAdoConfigService.GetConnectionContextAsync
+// both now degrade gracefully rather than 500ing when that happens, but "please re-enter your PAT" for
+// every user on every deploy is still exactly the failure this fixes). When Redis IS configured, every
+// replica instead persists to and reads from the SAME Redis-backed key ring via
+// PersistKeysToStackExchangeRedis, so a PAT/API key encrypted by one replica decrypts fine on any other.
+// See the README for what happens if this key material is ever lost (every stored PAT/API key becomes
+// permanently unreadable and users must re-enter them) and DataProtectionKeyImporter for migrating an
+// existing filesystem key ring into Redis during a one-time cutover.
+var dataProtectionBuilder = builder.Services.AddDataProtection().SetApplicationName("AzureBuddy");
+if (redisMultiplexer is not null)
+{
+    var redisInstanceName = builder.Configuration[$"{RedisOptions.SectionName}:InstanceName"] ?? "azurebuddy:";
+    dataProtectionBuilder.PersistKeysToStackExchangeRedis(redisMultiplexer, $"{redisInstanceName}DataProtection-Keys");
+}
+else
+{
+    var dataProtectionKeyPath = builder.Configuration["DataProtection:KeyPath"] ?? "DataProtection-Keys";
+    dataProtectionBuilder.PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeyPath));
+}
 
 builder.Services.AddLlmProviders(builder.Configuration);
 builder.Services.AddAzureDevOps(builder.Configuration);
