@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+.claude/
 .claude/settings.local.json
 n8n_data/
 .n8n/
@@ -10,22 +11,70 @@ n8n_data/
 .DS_Store
 Thumbs.db
 
-# Editors
+# Editors / IDEs
 .vscode/
 .idea/
 
-# .NET
+# .NET / Visual Studio
 bin/
 obj/
 *.user
+*.suo
+*.userosscache
+*.sln.docstates
 .vs/
-# Real appsettings files may hold live secrets (DB password, JWT signing key, Gemini API key) - only
-# the placeholder appsettings.Example.json is ever tracked. Ignoring the bare name (not just
-# *.local.json/*.Development.json) means a real file can never be committed by accident even via
-# `git add -A`, regardless of what environment suffix it uses.
+
+# appsettings and runtime config (keep only the Example tracked)
 appsettings.json
 appsettings.*.json
 !appsettings.Example.json
-# Data Protection keys encrypt PATs at rest - never commit them (losing/leaking them is either a
-# security incident or makes every stored PAT permanently unreadable).
+
+# Data Protection keys
 DataProtection-Keys/
+
+# Node / JS
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-lock.yaml
+
+# NuGet / packages
+*.nupkg
+packages/
+.nuget/packages/
+
+# Logs, databases, coverage
+*.log
+*.sqlite
+*.db
+coverage/
+
+# Build / temp
+*.tmp
+*.temp
+*.cache
+
+# Docker
+docker-compose.override.yml
+.docker/
+
+# Terraform, Vagrant
+.terraform/
+.terraform.lock.hcl
+.vagrant/
+
+# Misc
+*.vsix
+*.userprefs
+.idea_workspace
+
+# Ignore local environment examples
+.env.local
+.env.development.local
+
+# Ignore editor cache/lock files
+*.swp
+*~
+
+# Keep the README and example config tracked; ignore real secrets and generated files.
