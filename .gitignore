@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+.claude/
 .claude/settings.local.json
 n8n_data/
 .n8n/
