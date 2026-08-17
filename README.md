@@ -46,8 +46,10 @@ environment variables / `dotnet user-secrets` locally:
 | Key | What it is |
 |---|---|
 | `ConnectionStrings:DefaultConnection` | MySQL connection string, e.g. `server=localhost;port=3306;database=azurebuddy;user=azurebuddy;password=...` |
-| `Jwt:SigningKey` | Random secret (32+ bytes) used to sign/verify JWT access tokens. Treat like a password - a leaked signing key lets anyone mint valid tokens for any user. |
+| `Jwt:SigningKey` | Random secret (32+ bytes) used to sign/verify JWT access tokens. Treat like a password - a leaked signing key lets anyone mint valid tokens for any user. Validated at startup (`[Required, MinLength(32)]` via `ValidateOnStart()`) so a missing/too-short key fails loudly immediately instead of the first time a token is minted. |
 | `Jwt:AccessTokenMinutes` / `Jwt:RefreshTokenDays` | Token lifetimes |
+| `Cors:AllowedOrigins` | JSON array of origins the browser is allowed to call this API from, e.g. `["https://app.example.com"]`. **Required outside Development** - the app fails fast at startup if this is missing in a non-Development environment, rather than silently falling back to allowing only `localhost:4200`. |
+| `Admin:Emails` | JSON array of emails granted the `Admin` role on every startup, if a matching user already exists (register the account first, then restart the app). |
 | `Identity:Password:*`, `Identity:Lockout:*` | Password complexity and lockout policy (see `Microsoft.AspNetCore.Identity.IdentityOptions` for all available keys) |
 | `DataProtection:KeyPath` | Filesystem folder where the encryption keys protecting stored ADO PATs/LLM API keys are kept, used only when `Redis:Configuration` is blank. **Back this up** - losing it makes every stored PAT/API key permanently undecryptable (users would need to re-enter them). In a multi-instance deployment without Redis this must be a *shared* location (mounted volume), not local disk per instance - or better, configure Redis instead (see "Horizontal scaling" below). |
 | `Ado:ApiVersion` | Azure DevOps REST API version (e.g. `7.1`) - the only ADO setting that's still global; org/project/PAT are per-user now (see below) |
@@ -143,8 +145,8 @@ All other endpoints require `Authorization: Bearer <accessToken>`.
 - `POST /api/chats/{sessionId}/messages` — multipart form: `role`, `content`, `workItemId?`, `screenshot?` (file). Screenshots are forwarded straight to Azure DevOps as a work-item attachment and never written to disk here - only the resulting ADO URL is stored.
 - `DELETE /api/chats/{sessionId}`
 
-**Live chat** (`chat`, same conversational flow as the original n8n workflow, now authenticated and persisted):
-- `POST /chat` — `{ sessionId?, message }` → `{ sessionId, reply }`. Omit `sessionId` to start a new session.
+**Live chat** (`api/chat`, same conversational flow as the original n8n workflow, now authenticated and persisted):
+- `POST /api/chat` — `{ sessionId?, message }` → `{ sessionId, reply }`. Omit `sessionId` to start a new session. Rate-limited per authenticated user (see `RateLimiterPolicies.Chat`) since every call makes at least one billed LLM request.
 
 **Health** (no token required):
 - `GET /health/live` — always 200 once the process is up; runs no dependency checks. For an

@@ -14,7 +14,7 @@ import {
 } from '../models/chat.models';
 
 const CHATS_BASE_URL = `${environment.apiUrl}/api/chats`;
-const LIVE_CHAT_URL = `${environment.apiUrl}/chat`;
+const LIVE_CHAT_URL = `${environment.apiUrl}/api/chat`;
 
 @Injectable({ providedIn: 'root' })
 export class ChatService {

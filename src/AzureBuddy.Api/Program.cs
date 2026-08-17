@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using AzureBuddy.Api;
+using AzureBuddy.Api.Startup;
 using AzureBuddy.Core.Account;
 using AzureBuddy.Core.Agent;
 using AzureBuddy.Core.Auth;
@@ -92,8 +93,18 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 // Both spellings of the dev server's own address are allowed because either can be what's in the
 // browser's address bar, and the browser sends whichever one it used as the Origin header - a
 // mismatch there is a blocked request, not a fallback. Nothing here depends on which one you use.
-var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-    ?? new[] { "http://localhost:4200", "http://127.0.0.1:4200" };
+// The localhost fallback is deliberately Development-only: a deployer who forgets to set
+// Cors:AllowedOrigins in a real environment should get a loud startup failure (matching the existing
+// pattern for ConnectionStrings:DefaultConnection and Jwt:SigningKey below), not a CORS policy that
+// silently only allows localhost:4200 and makes the real frontend origin unreachable with no error
+// anywhere except the browser's console.
+var configuredCorsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+var corsOrigins = configuredCorsOrigins
+    ?? (builder.Environment.IsDevelopment()
+        ? new[] { "http://localhost:4200", "http://127.0.0.1:4200" }
+        : throw new InvalidOperationException(
+            "Missing Cors:AllowedOrigins in configuration. This is required outside Development so the " +
+            "API doesn't silently fall back to allowing only localhost origins."));
 
 builder.Services.AddCors(options =>
 {
@@ -254,10 +265,18 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 // same factory instance - this isn't a workaround for a bug, it's the same limiter correctly doing its
 // job against traffic that (unlike real clients) has no IP diversity. Production behavior is unchanged.
 var authRateLimit = builder.Environment.IsEnvironment("Testing") ? int.MaxValue : 5;
+
+// ChatController's /api/chat makes at least one billed LLM request (and potentially several Azure
+// DevOps API calls) on every call - unlike Auth above, there was previously no rate limit on it at all,
+// which is both a cost-control gap and an abuse-protection gap. Same "Testing" carve-out as Auth: the
+// TestServer's single synthetic client/user would otherwise trip a real-world limit almost immediately
+// once more than a handful of tests exercise the same factory instance.
+var chatRateLimit = builder.Environment.IsEnvironment("Testing") ? int.MaxValue : 20;
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.AddPolicy(RateLimiterPolicies.Auth, httpContext => AuthRateLimiterPolicy.CreatePartition(httpContext, authRateLimit));
+    options.AddPolicy(RateLimiterPolicies.Chat, httpContext => ChatRateLimiterPolicy.CreatePartition(httpContext, chatRateLimit));
 });
 
 // ---- Data Protection (PAT/API-key encryption key storage) ----
@@ -293,6 +312,7 @@ builder.Services.AddAzureBuddyAuth(builder.Configuration);
 builder.Services.AddAzureBuddyAccount();
 builder.Services.AddAdoSettings();
 builder.Services.AddChatHistory();
+builder.Services.AddScoped<AdminRoleSeeder>();
 
 // ---- Health checks ----
 // "ready" tags DatabaseHealthCheck (and RedisHealthCheck, only when Redis is configured) so
@@ -320,28 +340,17 @@ var app = builder.Build();
 // create one. The intended flow: register normally through the UI, add that email to Admin:Emails,
 // restart the app once. Runs in its own scope (services registered at Scoped/Transient lifetime, like
 // AppDbContext, aren't available on the root IServiceProvider `app.Services` directly).
-using (var scope = app.Services.CreateScope())
+//
+// Wrapped in StartupRetry: without it, MySQL being briefly unreachable at the exact moment this
+// container starts (a common race in orchestrated deployments where the DB and app start together) used
+// to throw straight out of these top-level statements and kill the process before app.Run() ever
+// executed - so even /health/live never came up to report what had gone wrong.
+var startupLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("AzureBuddy.Startup");
+await StartupRetry.RunAsync("Admin role seeding", startupLogger, async cancellationToken =>
 {
-    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    if (!await roleManager.RoleExistsAsync("Admin"))
-    {
-        await roleManager.CreateAsync(new IdentityRole("Admin"));
-    }
-
-    var adminEmails = app.Configuration.GetSection("Admin:Emails").Get<string[]>() ?? Array.Empty<string>();
-    if (adminEmails.Length > 0)
-    {
-        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
-        foreach (var email in adminEmails)
-        {
-            var user = await userManager.FindByEmailAsync(email);
-            if (user is not null && !await userManager.IsInRoleAsync(user, "Admin"))
-            {
-                await userManager.AddToRoleAsync(user, "Admin");
-            }
-        }
-    }
-}
+    using var scope = app.Services.CreateScope();
+    await scope.ServiceProvider.GetRequiredService<AdminRoleSeeder>().SeedAsync(cancellationToken);
+}, CancellationToken.None);
 
 // ---- LLM settings: load from database, if an admin has ever saved any ----
 // LlmSettingsProvider (see AzureBuddy.Core/Llm/ILlmSettingsProvider.cs) already seeded itself from
@@ -350,21 +359,31 @@ using (var scope = app.Services.CreateScope())
 // actually saved something" precedence LlmSettingsService.GetAsync uses when deciding what to show an
 // admin. A no-op if no row exists yet (a brand new deployment), leaving the appsettings.json values in
 // effect exactly as before this feature existed.
-using (var scope = app.Services.CreateScope())
+await StartupRetry.RunAsync("LLM settings load", startupLogger, async cancellationToken =>
 {
+    using var scope = app.Services.CreateScope();
     await scope.ServiceProvider.GetRequiredService<AzureBuddy.Core.Llm.LlmSettingsService>()
-        .LoadFromDatabaseIfPresentAsync();
-}
+        .LoadFromDatabaseIfPresentAsync(cancellationToken);
+}, CancellationToken.None);
 
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+else
+{
+    // Tells browsers to remember (via the Strict-Transport-Security header) to always use HTTPS for
+    // this origin going forward, closing the window where a first request over plain HTTP could be
+    // intercepted before UseHttpsRedirection below gets a chance to redirect it. Skipped in Development
+    // to avoid caching issues with self-signed certs, matching the standard ASP.NET Core template.
+    app.UseHsts();
+}
 
 // Must run before anything that reads Connection.RemoteIpAddress or Request.Scheme - the rate
-// limiter's per-IP partitioning and UseHttpsRedirection below both depend on this having already
-// rewritten them from X-Forwarded-For/X-Forwarded-Proto (when Network:KnownProxies trusts the caller).
+// limiter's per-user/per-IP partitioning and UseHttpsRedirection below both depend on this having
+// already rewritten them from X-Forwarded-For/X-Forwarded-Proto (when Network:KnownProxies trusts the
+// caller).
 app.UseForwardedHeaders();
 
 // Registered as early as possible (only UseForwardedHeaders runs first, and it never throws) so it
@@ -374,8 +393,6 @@ app.UseExceptionHandler();
 
 app.UseHttpsRedirection();
 
-app.UseRateLimiter();
-
 // Must run before UseAuthentication/UseAuthorization - the browser's CORS preflight (OPTIONS)
 // request carries no Authorization header, so if this ran later the preflight itself would get
 // rejected by the auth pipeline before CORS ever got a chance to approve the real request.
@@ -383,6 +400,14 @@ app.UseCors();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Runs after UseAuthorization (the standard ASP.NET Core ordering: routing, CORS, auth, then rate
+// limiting) specifically so ChatRateLimiterPolicy's per-user partitioning can read the verified user id
+// claim - if this ran earlier (as it used to, before CORS), HttpContext.User would still be anonymous
+// and per-user partitioning would be impossible. AuthRateLimiterPolicy's per-IP partitioning for
+// register/login/refresh is unaffected by the move, since RemoteIpAddress is available regardless of
+// where in the pipeline this runs.
+app.UseRateLimiter();
 
 app.MapControllers();
 

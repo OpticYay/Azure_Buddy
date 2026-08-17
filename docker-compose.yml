@@ -65,6 +65,10 @@ services:
       # fixed IP needed, and it stays correct regardless of which host this is deployed to.
       ConnectionStrings__DefaultConnection: "server=mysql;port=3306;database=${MYSQL_DATABASE:-azurebuddy};user=${MYSQL_USER:-azurebuddy};password=${MYSQL_PASSWORD:-azurebuddy}"
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY in .env - see .env.example}
+      # No ASPNETCORE_ENVIRONMENT is set here, so this container runs as "Production" - Program.cs
+      # fails fast at startup in any non-Development environment if Cors:AllowedOrigins is missing
+      # (rather than silently falling back to allowing only localhost:4200), so this must be set.
+      Cors__AllowedOrigins__0: ${CORS_ALLOWED_ORIGIN:-http://localhost:4200}
       Redis__Configuration: "redis:6379"
       Llm__Providers__0: Gemini
       Llm__Providers__1: Ollama
@@ -97,6 +101,7 @@ services:
     environment:
       ConnectionStrings__DefaultConnection: "server=mysql;port=3306;database=${MYSQL_DATABASE:-azurebuddy};user=${MYSQL_USER:-azurebuddy};password=${MYSQL_PASSWORD:-azurebuddy}"
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY in .env - see .env.example}
+      Cors__AllowedOrigins__0: ${CORS_ALLOWED_ORIGIN:-http://localhost:4200}
       Redis__Configuration: "redis:6379"
       Llm__Providers__0: Gemini
       Llm__Providers__1: Ollama

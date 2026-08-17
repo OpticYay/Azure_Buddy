@@ -47,12 +47,12 @@ public class TwoReplicaChatContinuityTests
         clientB.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokens.AccessToken);
 
         replicaA.ChatClient.ReplyText = "Hi! How can I help?";
-        var firstResponse = await clientA.PostAsJsonAsync("/chat", new ChatRequest(null, "hello there"));
+        var firstResponse = await clientA.PostAsJsonAsync("/api/chat", new ChatRequest(null, "hello there"));
         firstResponse.EnsureSuccessStatusCode();
         var firstReply = (await firstResponse.Content.ReadFromJsonAsync<ChatResponse>(JsonOptions))!;
 
         replicaB.ChatClient.ReplyText = "Sure, doing that now.";
-        var secondResponse = await clientB.PostAsJsonAsync("/chat", new ChatRequest(firstReply.SessionId, "what about now"));
+        var secondResponse = await clientB.PostAsJsonAsync("/api/chat", new ChatRequest(firstReply.SessionId, "what about now"));
         secondResponse.EnsureSuccessStatusCode();
 
         // The conversational agent's own completion call (as opposed to IntentExtractor's short
@@ -94,12 +94,12 @@ public class TwoReplicaChatContinuityTests
         clientB.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokens.AccessToken);
 
         replicaA.ChatClient.ReplyText = "Hi! How can I help?";
-        var firstResponse = await clientA.PostAsJsonAsync("/chat", new ChatRequest(null, "hello there"));
+        var firstResponse = await clientA.PostAsJsonAsync("/api/chat", new ChatRequest(null, "hello there"));
         firstResponse.EnsureSuccessStatusCode();
         var firstReply = (await firstResponse.Content.ReadFromJsonAsync<ChatResponse>(JsonOptions))!;
 
         replicaB.ChatClient.ReplyText = "Sure, doing that now.";
-        var secondResponse = await clientB.PostAsJsonAsync("/chat", new ChatRequest(firstReply.SessionId, "what about now"));
+        var secondResponse = await clientB.PostAsJsonAsync("/api/chat", new ChatRequest(firstReply.SessionId, "what about now"));
         secondResponse.EnsureSuccessStatusCode();
 
         var agentHistory = replicaB.ChatClient.ReceivedHistories.MaxBy(h => h.Messages.Count)!;

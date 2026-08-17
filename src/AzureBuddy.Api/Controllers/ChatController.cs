@@ -7,6 +7,7 @@ using AzureBuddy.Core.Settings;
 using AzureBuddy.Data.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace AzureBuddy.Api.Controllers;
 
@@ -35,8 +36,9 @@ public sealed record ChatResponse(
 ///      so this live flow produces the same durable history the /api/chats endpoints expose.
 /// </summary>
 [ApiController]
-[Route("chat")]
+[Route("api/chat")]
 [Authorize]
+[EnableRateLimiting(RateLimiterPolicies.Chat)]
 public sealed class ChatController : ControllerBase
 {
     private readonly IntentRouter _intentRouter;
