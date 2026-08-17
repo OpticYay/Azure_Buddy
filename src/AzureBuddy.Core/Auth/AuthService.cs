@@ -216,15 +216,10 @@ public sealed class AuthService
             return AuthResult.Fail(invalidCredentials);
         }
 
-        // CheckPasswordAsync (via PasswordHasher) does a constant-time comparison of the hash, and
-        // UserManager tracks failed attempts toward the lockout policy configured in Program.cs.
-        var passwordValid = await _userManager.CheckPasswordAsync(user, request.Password);
-        if (!passwordValid)
-        {
-            _logger.LogWarning("Failed login attempt for {Email}.", request.Email);
-            return AuthResult.Fail(invalidCredentials);
-        }
-
+        // Checked BEFORE the password check: once AccessFailedAsync/ResetAccessFailedCountAsync below
+        // actually drive the failure counter, a request that arrives with the correct password while
+        // the account happens to be locked must not fall through to a success just because
+        // CheckPasswordAsync would have returned true.
         if (await _userManager.IsLockedOutAsync(user))
         {
             return AuthResult.Fail(new ApiError(
@@ -232,6 +227,20 @@ public sealed class AuthService
                 "Account is temporarily locked due to repeated failed login attempts. Try again later."));
         }
 
+        // CheckPasswordAsync (via PasswordHasher) does a constant-time comparison of the hash, but on
+        // its own does NOT track failed attempts - AddIdentityCore (not AddIdentity) is used in
+        // Program.cs precisely because SignInManager isn't needed for a JWT-only API, which also means
+        // SignInManager's usual AccessFailedAsync bookkeeping is never called unless done explicitly
+        // here.
+        var passwordValid = await _userManager.CheckPasswordAsync(user, request.Password);
+        if (!passwordValid)
+        {
+            _logger.LogWarning("Failed login attempt for {Email}.", request.Email);
+            await _userManager.AccessFailedAsync(user);
+            return AuthResult.Fail(invalidCredentials);
+        }
+
+        await _userManager.ResetAccessFailedCountAsync(user);
         return AuthResult.Ok(await IssueTokensAsync(user, cancellationToken));
     }
 
@@ -243,8 +252,31 @@ public sealed class AuthService
             .Include(t => t.User)
             .SingleOrDefaultAsync(t => t.TokenHash == tokenHash, cancellationToken);
 
-        // IsActive checks RevokedAt is null AND ExpiresAt is in the future - a reused, revoked, or
-        // expired refresh token is rejected the same way as one that was never issued.
+        // A token that's already revoked (as opposed to simply missing or expired) means this exact
+        // token was already rotated away once - the strongest signal available that it was stolen and
+        // is now being replayed by someone other than whoever holds the current, rotated-to token.
+        // Revoke the whole family so both the legitimate holder and the attacker are forced to
+        // re-authenticate, rather than treating this the same as an ordinary invalid/expired token.
+        if (stored is { RevokedAt: not null, User: not null })
+        {
+            _logger.LogWarning(
+                "Revoked refresh token replayed for user {UserId} - treating as compromise and revoking the token family.",
+                stored.UserId);
+
+            var activeTokens = await _dbContext.RefreshTokens
+                .Where(t => t.UserId == stored.UserId && t.RevokedAt == null)
+                .ToListAsync(cancellationToken);
+            foreach (var token in activeTokens)
+            {
+                token.RevokedAt = DateTime.UtcNow;
+            }
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            return AuthResult.Fail(new ApiError("invalid_refresh_token", "Invalid or expired refresh token."));
+        }
+
+        // IsActive checks RevokedAt is null AND ExpiresAt is in the future - an expired token is
+        // rejected the same way as one that was never issued.
         if (stored is null || !stored.IsActive || stored.User is null)
         {
             return AuthResult.Fail(new ApiError("invalid_refresh_token", "Invalid or expired refresh token."));

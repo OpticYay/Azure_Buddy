@@ -50,15 +50,18 @@ public sealed class OllamaChatClient : IChatCompletionClient
             throw new ChatCompletionProviderException(ProviderName, "Ollama request failed or timed out (is it running?).", ex);
         }
 
-        if (!response.IsSuccessStatusCode)
+        using (response)
         {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning("Ollama returned {Status}: {Body}", response.StatusCode, body);
-            throw new ChatCompletionProviderException(ProviderName, $"Ollama returned {(int)response.StatusCode}.");
-        }
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cts.Token);
+                _logger.LogWarning("Ollama returned {Status}: {Body}", response.StatusCode, Truncate(body));
+                throw new ChatCompletionProviderException(ProviderName, $"Ollama returned {(int)response.StatusCode}.");
+            }
 
-        var payload = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: cancellationToken);
-        return ParseResponse(payload);
+            var payload = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: cts.Token);
+            return ParseResponse(payload);
+        }
     }
 
     private object BuildRequestBody(ChatHistory history, IReadOnlyList<ToolDefinition> tools)
@@ -116,6 +119,9 @@ public sealed class OllamaChatClient : IChatCompletionClient
 
         return new { role, content = message.Content ?? string.Empty };
     }
+
+    // See GeminiChatClient's identical helper - provider error bodies are capped before they reach logs.
+    private static string Truncate(string body) => body.Length > 500 ? body[..500] + "... [truncated]" : body;
 
     private ChatCompletionResult ParseResponse(JsonElement payload)
     {

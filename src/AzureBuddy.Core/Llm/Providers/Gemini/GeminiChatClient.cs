@@ -35,7 +35,7 @@ public sealed class GeminiChatClient : IChatCompletionClient
         CancellationToken cancellationToken = default)
     {
         var requestBody = BuildRequestBody(history, tools);
-        var url = $"{_options.BaseUrl}/models/{_options.Model}:generateContent?key={_options.ApiKey}";
+        var url = $"{_options.BaseUrl}/models/{_options.Model}:generateContent";
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
@@ -43,22 +43,33 @@ public sealed class GeminiChatClient : IChatCompletionClient
         HttpResponseMessage response;
         try
         {
-            response = await _httpClient.PostAsJsonAsync(url, requestBody, cts.Token);
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = JsonContent.Create(requestBody)
+            };
+            // The API key travels as a header, not a query-string parameter - a URL is far more likely
+            // to be captured verbatim by handler/proxy-level request logging (including
+            // response.RequestMessage.RequestUri, which this class's own error logging touches).
+            request.Headers.Add("x-goog-api-key", _options.ApiKey);
+            response = await _httpClient.SendAsync(request, cts.Token);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             throw new ChatCompletionProviderException(ProviderName, "Gemini request failed or timed out.", ex);
         }
 
-        if (!response.IsSuccessStatusCode)
+        using (response)
         {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning("Gemini returned {Status}: {Body}", response.StatusCode, body);
-            throw new ChatCompletionProviderException(ProviderName, $"Gemini returned {(int)response.StatusCode}.");
-        }
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cts.Token);
+                _logger.LogWarning("Gemini returned {Status}: {Body}", response.StatusCode, Truncate(body));
+                throw new ChatCompletionProviderException(ProviderName, $"Gemini returned {(int)response.StatusCode}.");
+            }
 
-        var payload = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: cancellationToken);
-        return ParseResponse(payload);
+            var payload = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: cts.Token);
+            return ParseResponse(payload);
+        }
     }
 
     private static object BuildRequestBody(ChatHistory history, IReadOnlyList<ToolDefinition> tools)
@@ -138,6 +149,10 @@ public sealed class GeminiChatClient : IChatCompletionClient
 
         return new { role, parts = new[] { new { text = message.Content ?? string.Empty } } };
     }
+
+    // Provider error bodies can be arbitrarily large and, in principle, echo back request content -
+    // capped before it reaches the logs.
+    private static string Truncate(string body) => body.Length > 500 ? body[..500] + "... [truncated]" : body;
 
     private ChatCompletionResult ParseResponse(JsonElement payload)
     {

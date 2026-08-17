@@ -108,7 +108,16 @@ public sealed class IntentRouter
 
     /// <summary>Mirrors the n8n "Ensure Non-Empty Reply" Code node - never let a blank/failed model
     /// response reach the user silently. A blank/failed reply is itself an Error-typed message,
-    /// regardless of what type the caller asked for - there's no "empty table" to show.</summary>
+    /// regardless of what type the caller asked for - there's no "empty table" to show.
+    ///
+    /// This is a deliberate choice, not an oversight: AzureBuddyAgent.RespondAsync catches
+    /// ChatCompletionProviderException itself and returns string.Empty (logging at Error level, which is
+    /// what should feed alerting), and IntentExtractor.ExtractAsync does the same for the classification
+    /// call, falling back to ChatIntent.Other. Both mean GlobalExceptionHandler's 502 "llm_provider_unavailable"
+    /// mapping is effectively unreachable from a normal conversational turn - a provider outage always
+    /// surfaces as this in-chat Error message on an ordinary 200, never as a 502. That trade favors chat
+    /// UX (never show the user a raw HTTP error) over an externally-observable outage signal; watch the
+    /// Error-level agent/extractor logs, not response status codes, to detect provider outages.</summary>
     private static ChatReply EnsureNonEmpty(
         string? text,
         ChatMessageType type,

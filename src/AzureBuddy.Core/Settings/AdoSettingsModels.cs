@@ -7,8 +7,13 @@ namespace AzureBuddy.Core.Settings;
 // URL wasn't caught until the first failed request. Attributes target the parameter (not
 // "[property: ...]") - see the comment on RegisterRequest in Auth/AuthModels.cs for why that
 // placement matters for records.
+//
+// [Url]'s own regex does not reject quote characters - this value is later interpolated, unescaped,
+// into an href attribute by markdown-lite.pipe.ts's renderCell (defence in depth: that pipe now
+// escapes it too, but a saved value containing a quote shouldn't be accepted here in the first place).
 public sealed record SaveAdoSettingsRequest(
-    [Required, Url] string OrganizationUrl,
+    [Required, Url, RegularExpression(@"^[^""']*$", ErrorMessage = "Organization URL cannot contain quote characters.")]
+    string OrganizationUrl,
     [Required] string DefaultProject,
     [Required] string PersonalAccessToken);
 

@@ -171,7 +171,10 @@ function renderCell(cell: string, isIdColumn: boolean, workItemBaseUrl: string |
   if (!isIdColumn || !workItemBaseUrl || !/^\d+$/.test(id)) {
     return renderInline(cell);
   }
-  return `<a class="stamp" href="${workItemBaseUrl}/${id}" target="_blank" rel="noopener">#${id}</a>`;
+  // workItemBaseUrl is NOT LLM output - it comes from the user's own saved ADO organizationUrl setting
+  // (a free-text input) - and unlike the markdown body text, it never passes through the escapeHtml()
+  // call above, so it must be escaped here explicitly before landing inside this href attribute.
+  return `<a class="stamp" href="${escapeAttribute(workItemBaseUrl)}/${id}" target="_blank" rel="noopener">#${id}</a>`;
 }
 
 /** Splits "| a | b |" into ["a", "b"] - the leading/trailing pipes produce empty edge entries that
@@ -207,5 +210,14 @@ function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** For values interpolated directly into an HTML attribute (as opposed to escapeHtml, which runs over
+ * the markdown body text) - quotes matter here specifically because they're what let a value break out
+ * of a surrounding href="...". */
+function escapeAttribute(value: string): string {
+  return escapeHtml(value);
 }

@@ -29,9 +29,15 @@ public sealed class NoOpEmailSender : IEmailSender
 
     public Task SendAsync(string toEmail, string subject, string body, CancellationToken cancellationToken = default)
     {
+        // The body carries password-reset/email-confirmation links and tokens - logging it at
+        // Information would let anyone with log read access complete either flow for any user, and
+        // this is the DEFAULT path whenever Email:Smtp:Host is blank (every local/dev environment by
+        // default), not a rare fallback. Debug is opt-in and expected to be off in any shared/persisted
+        // log sink - this must never be raised back to Information.
         _logger.LogInformation(
-            "No email provider configured (see Email:Smtp:Host) - would have sent to {ToEmail}, subject {Subject}:\n{Body}",
-            toEmail, subject, body);
+            "No email provider configured (see Email:Smtp:Host) - would have sent to {ToEmail}, subject {Subject}.",
+            toEmail, subject);
+        _logger.LogDebug("Email body that would have been sent to {ToEmail}:\n{Body}", toEmail, body);
         return Task.CompletedTask;
     }
 }

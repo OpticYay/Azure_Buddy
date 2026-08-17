@@ -128,7 +128,7 @@ public sealed class AdoClient : IAdoClient
         // A minimal, side-effect-free call: listing work item types for the configured project only
         // succeeds if the org/project exist and the PAT has at least read access.
         var url = BuildUrl(connection, Paths.WorkItemTypes);
-        var response = await SendAsync(connection, () => new HttpRequestMessage(HttpMethod.Get, url), cancellationToken);
+        using var response = await SendAsync(connection, () => new HttpRequestMessage(HttpMethod.Get, url), cancellationToken);
         return response.IsSuccessStatusCode;
     }
 
@@ -171,26 +171,35 @@ public sealed class AdoClient : IAdoClient
 
     private async Task<T> ReadOrThrowAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
     {
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        using (response)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        if (!response.IsSuccessStatusCode)
-        {
-            // Deliberately not logging the request's Authorization header (SendAsync never adds it to
-            // any log-visible object) - only the URL/status/body, so PATs never end up in logs.
-            _logger.LogWarning("Azure DevOps call to {Url} returned {Status}: {Body}", response.RequestMessage?.RequestUri, response.StatusCode, body);
-            throw new AdoApiException($"Azure DevOps returned {(int)response.StatusCode}: {body}");
-        }
+            if (!response.IsSuccessStatusCode)
+            {
+                // Deliberately not logging the request's Authorization header (SendAsync never adds it
+                // to any log-visible object) - only the URL/status/body, so PATs never end up in logs.
+                // The body itself is truncated before it reaches either the log or the client-facing
+                // exception message (surfaced verbatim by GlobalExceptionHandler as ado_api_error) -
+                // ADO error bodies can include project/org metadata.
+                var truncated = Truncate(body);
+                _logger.LogWarning("Azure DevOps call to {Url} returned {Status}: {Body}", response.RequestMessage?.RequestUri, response.StatusCode, truncated);
+                throw new AdoApiException($"Azure DevOps returned {(int)response.StatusCode}: {truncated}");
+            }
 
-        try
-        {
-            return JsonSerializer.Deserialize<T>(body, JsonOptions)
-                   ?? throw new AdoApiException("Azure DevOps returned an empty response body.");
-        }
-        catch (JsonException ex)
-        {
-            throw new AdoApiException($"Failed to parse Azure DevOps response: {body}", ex);
+            try
+            {
+                return JsonSerializer.Deserialize<T>(body, JsonOptions)
+                       ?? throw new AdoApiException("Azure DevOps returned an empty response body.");
+            }
+            catch (JsonException ex)
+            {
+                throw new AdoApiException($"Failed to parse Azure DevOps response: {Truncate(body)}", ex);
+            }
         }
     }
+
+    private static string Truncate(string body) => body.Length > 500 ? body[..500] + "... [truncated]" : body;
 }
 
 /// <summary>Raised when an Azure DevOps call fails or returns an unparseable response, after retries
