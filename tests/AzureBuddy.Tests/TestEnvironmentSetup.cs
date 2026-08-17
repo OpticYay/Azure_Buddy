@@ -18,6 +18,12 @@ namespace AzureBuddy.Tests;
 /// order, so this makes test runs hermetic even on a machine that DOES have a local appsettings.json:
 /// tests never depend on a developer's personal secrets.
 ///
+/// Cors:AllowedOrigins joins this list for the same reason: Program.cs now fails fast on it outside
+/// Development (see the Cors section), and CustomWebApplicationFactory's builder.UseEnvironment("Testing")
+/// means IsDevelopment() is false for every test run - so without a value here, every test that boots
+/// the real host via WebApplicationFactory would hit that same "throws before a single test can run"
+/// failure the other two variables already exist to prevent.
+///
 /// ConnectionStrings:DefaultConnection only needs to be non-empty here - CustomWebApplicationFactory
 /// swaps the real DbContext registration for one pointing at the Testcontainers MySQL instance before
 /// this value is ever used to open a connection. Jwt:SigningKey/Issuer/Audience, by contrast, DO matter: real
@@ -36,6 +42,7 @@ internal static class TestEnvironmentSetup
         SetIfAbsent("Jwt__SigningKey", "azure-buddy-integration-test-signing-key-do-not-use-in-production");
         SetIfAbsent("Jwt__Issuer", "AzureBuddy");
         SetIfAbsent("Jwt__Audience", "AzureBuddy");
+        SetIfAbsent("Cors__AllowedOrigins__0", "http://localhost:4200");
     }
 
     private static void SetIfAbsent(string variable, string value)
