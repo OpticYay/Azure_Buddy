@@ -97,7 +97,11 @@ public sealed class GeminiChatClient : IChatCompletionClient
         {
             ChatRole.User => "user",
             ChatRole.Assistant => "model",
-            ChatRole.Tool => "function",
+            // Gemini's generateContent endpoint rejects role "function" for tool-result turns
+            // ("Role 'function' is not supported... use USER, MODEL...") - the functionResponse
+            // wrapper inside the part is what marks it as a tool result, so the outer role just
+            // needs to be "user".
+            ChatRole.Tool => "user",
             _ => "user"
         };
 
@@ -125,14 +129,28 @@ public sealed class GeminiChatClient : IChatCompletionClient
             return new
             {
                 role,
-                parts = message.ToolCalls.Select(tc => new
-                {
-                    functionCall = new
+                // thoughtSignature must ride alongside the functionCall part it was issued for - Gemini
+                // 3 rejects a replayed functionCall that's missing it (see GeminiThoughtSignature). Only
+                // set the property at all when we have a value, since Gemini also rejects the key with a
+                // null/empty signature.
+                parts = message.ToolCalls.Select(tc => tc.GeminiThoughtSignature is { Length: > 0 } sig
+                    ? (object)new
                     {
-                        name = tc.Name,
-                        args = JsonSerializer.Deserialize<JsonElement>(tc.ArgumentsJson)
+                        functionCall = new
+                        {
+                            name = tc.Name,
+                            args = JsonSerializer.Deserialize<JsonElement>(tc.ArgumentsJson)
+                        },
+                        thoughtSignature = sig
                     }
-                }).ToArray()
+                    : new
+                    {
+                        functionCall = new
+                        {
+                            name = tc.Name,
+                            args = JsonSerializer.Deserialize<JsonElement>(tc.ArgumentsJson)
+                        }
+                    }).ToArray()
             };
         }
 
@@ -158,7 +176,17 @@ public sealed class GeminiChatClient : IChatCompletionClient
             {
                 var name = functionCall.GetProperty("name").GetString() ?? string.Empty;
                 var args = functionCall.TryGetProperty("args", out var a) ? a.GetRawText() : "{}";
-                toolCalls.Add(new ToolCall { Id = Guid.NewGuid().ToString("N"), Name = name, ArgumentsJson = args });
+                // thoughtSignature sits alongside functionCall on the same part, not inside it - must be
+                // captured here so ToGeminiContent can echo it back on the next round (see
+                // ToolCall.GeminiThoughtSignature).
+                var signature = part.TryGetProperty("thoughtSignature", out var sigProp) ? sigProp.GetString() : null;
+                toolCalls.Add(new ToolCall
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Name = name,
+                    ArgumentsJson = args,
+                    GeminiThoughtSignature = signature
+                });
             }
             else if (part.TryGetProperty("text", out var textPart))
             {

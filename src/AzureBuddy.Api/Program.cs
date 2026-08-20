@@ -176,10 +176,15 @@ builder.Services.AddIdentityCore<ApplicationUser>()
 
 // Password/lockout policy bound from config instead of hardcoded, so it can be tightened per
 // environment without a code change. See appsettings.json's "Identity" section for the defaults.
-builder.Services.Configure<IdentityOptions>(builder.Configuration.GetSection("Identity"));
-
 // ---- JWT bearer authentication ----
+// Bound through JwtOptions (not raw jwtSection["Issuer"]/["Audience"] indexers) so validation uses the
+// SAME Issuer/Audience defaults ("AzureBuddy") that TokenService.CreateAccessToken mints tokens with.
+// The indexer approach used to return null when Jwt:Issuer/Jwt:Audience weren't explicitly set in
+// config, while TokenService's JwtOptions.Audience/.Issuer still defaulted to "AzureBuddy" - every
+// freshly-issued token then failed IDX10208 (ValidAudience is null) the instant it was validated,
+// because nothing was reading the same default the token was actually stamped with.
 var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName);
+var jwtOptionsForValidation = jwtSection.Get<JwtOptions>() ?? new JwtOptions();
 var jwtSigningKey = jwtSection["SigningKey"]
     ?? throw new InvalidOperationException("Missing Jwt:SigningKey in configuration.");
 
@@ -189,9 +194,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
-            ValidIssuer = jwtSection["Issuer"],
+            ValidIssuer = jwtOptionsForValidation.Issuer,
             ValidateAudience = true,
-            ValidAudience = jwtSection["Audience"],
+            ValidAudience = jwtOptionsForValidation.Audience,
             ValidateLifetime = true,
             // A small ClockSkew (default is 5 minutes) means an access token can still be accepted
             // briefly after its stated expiry - fine for most APIs, but worth knowing about if you

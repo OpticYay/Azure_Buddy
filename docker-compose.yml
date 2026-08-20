@@ -29,11 +29,9 @@ services:
   redis:
     image: redis:7
     restart: unless-stopped
-    # AOF (append-only file), not RDB snapshotting: RDB only saves at intervals, so a crash between
-    # snapshots loses everything written since - including Data Protection keys, which have no other
-    # backing store once Redis is the source for them. AOF durability trades some write throughput for
-    # not losing PAT/API-key decryptability across a Redis restart.
     command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -63,7 +61,12 @@ services:
     environment:
       # "mysql"/"redis" resolve via the compose network's built-in DNS - no host.docker.internal or
       # fixed IP needed, and it stays correct regardless of which host this is deployed to.
-      ConnectionStrings__DefaultConnection: "server=mysql;port=3306;database=${MYSQL_DATABASE:-azurebuddy};user=${MYSQL_USER:-azurebuddy};password=${MYSQL_PASSWORD:-azurebuddy}"
+      Llm__Gemini__Model: "gemini-2.5-flash"
+      Admin__Emails__0: "garg.lakshya03@gmail.com"
+      Cors__AllowedOrigins__0: "http://localhost:4200"
+      Cors__AllowedOrigins__1: "http://127.0.0.1:4200"
+      Cors__AllowedOrigins__2: "http://192.168.5.131:4200"
+      ConnectionStrings__DefaultConnection: "server=mysql;port=3306;database=${MYSQL_DATABASE:-azurebuddy};user=${MYSQL_USER:-azurebuddy};password=${MYSQL_PASSWORD:-admin123}"
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY in .env - see .env.example}
       Redis__Configuration: "redis:6379"
       Llm__Providers__0: Gemini
@@ -95,7 +98,7 @@ services:
     ports:
       - "8081:8080"
     environment:
-      ConnectionStrings__DefaultConnection: "server=mysql;port=3306;database=${MYSQL_DATABASE:-azurebuddy};user=${MYSQL_USER:-azurebuddy};password=${MYSQL_PASSWORD:-azurebuddy}"
+      ConnectionStrings__DefaultConnection: "server=mysql;port=3306;database=${MYSQL_DATABASE:-azurebuddy};user=${MYSQL_USER:-azurebuddy};password=${MYSQL_PASSWORD:-admin123}"
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY in .env - see .env.example}
       Redis__Configuration: "redis:6379"
       Llm__Providers__0: Gemini
