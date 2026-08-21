@@ -11,7 +11,7 @@ describe('ChatService', () => {
   let httpMock: HttpTestingController;
 
   const CHATS_BASE_URL = `${environment.apiUrl}/api/chats`;
-  const LIVE_CHAT_URL = `${environment.apiUrl}/chat`;
+  const LIVE_CHAT_URL = `${environment.apiUrl}/api/chat`;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
