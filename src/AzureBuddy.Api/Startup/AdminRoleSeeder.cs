@@ -1,3 +1,4 @@
+using AzureBuddy.Core.Common;
 using AzureBuddy.Data.Entities;
 using Microsoft.AspNetCore.Identity;
 
@@ -51,7 +52,9 @@ public sealed class AdminRoleSeeder
             var user = await _userManager.FindByEmailAsync(email);
             if (user is null)
             {
-                _logger.LogWarning("Admin:Emails lists {Email}, but no user with that email exists yet.", email);
+                _logger.LogWarning(
+                    "Admin:Emails lists {MaskedEmail}, but no user with that email exists yet.",
+                    EmailMasking.Mask(email));
                 continue;
             }
 

@@ -10,6 +10,28 @@ namespace AzureBuddy.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // The single-column indexes being dropped below each support a foreign key
+            // (RefreshTokens.UserId -> AspNetUsers.Id, ChatSessions.UserId -> AspNetUsers.Id,
+            // ChatMessages.SessionId -> ChatSessions.Id) - MySQL/InnoDB refuses to drop an index a FK
+            // still depends on ("needed in a foreign key constraint"). Creating the replacement
+            // composite index FIRST (it also has the FK column as its leading column, so InnoDB accepts
+            // it as the new supporting index) before dropping the old one avoids ever leaving the FK
+            // without a supporting index.
+            migrationBuilder.CreateIndex(
+                name: "IX_RefreshTokens_UserId_RevokedAt",
+                table: "RefreshTokens",
+                columns: new[] { "UserId", "RevokedAt" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ChatSessions_UserId_UpdatedAt",
+                table: "ChatSessions",
+                columns: new[] { "UserId", "UpdatedAt" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ChatMessages_SessionId_CreatedAt",
+                table: "ChatMessages",
+                columns: new[] { "SessionId", "CreatedAt" });
+
             migrationBuilder.DropIndex(
                 name: "IX_RefreshTokens_UserId",
                 table: "RefreshTokens");
@@ -155,26 +177,29 @@ namespace AzureBuddy.Data.Migrations
                 oldNullable: true)
                 .Annotation("MySql:CharSet", "utf8mb4")
                 .OldAnnotation("MySql:CharSet", "utf8mb4");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_RefreshTokens_UserId_RevokedAt",
-                table: "RefreshTokens",
-                columns: new[] { "UserId", "RevokedAt" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_ChatSessions_UserId_UpdatedAt",
-                table: "ChatSessions",
-                columns: new[] { "UserId", "UpdatedAt" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_ChatMessages_SessionId_CreatedAt",
-                table: "ChatMessages",
-                columns: new[] { "SessionId", "CreatedAt" });
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            // Same FK-supporting-index ordering constraint as Up() above, in reverse: create the
+            // original single-column indexes before dropping the composite ones that currently support
+            // the foreign keys.
+            migrationBuilder.CreateIndex(
+                name: "IX_RefreshTokens_UserId",
+                table: "RefreshTokens",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ChatSessions_UserId",
+                table: "ChatSessions",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ChatMessages_SessionId",
+                table: "ChatMessages",
+                column: "SessionId");
+
             migrationBuilder.DropIndex(
                 name: "IX_RefreshTokens_UserId_RevokedAt",
                 table: "RefreshTokens");
@@ -320,21 +345,6 @@ namespace AzureBuddy.Data.Migrations
                 oldNullable: true)
                 .Annotation("MySql:CharSet", "utf8mb4")
                 .OldAnnotation("MySql:CharSet", "utf8mb4");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_RefreshTokens_UserId",
-                table: "RefreshTokens",
-                column: "UserId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_ChatSessions_UserId",
-                table: "ChatSessions",
-                column: "UserId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_ChatMessages_SessionId",
-                table: "ChatMessages",
-                column: "SessionId");
         }
     }
 }

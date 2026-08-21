@@ -235,7 +235,7 @@ public sealed class AuthService
         var passwordValid = await _userManager.CheckPasswordAsync(user, request.Password);
         if (!passwordValid)
         {
-            _logger.LogWarning("Failed login attempt for {Email}.", request.Email);
+            _logger.LogWarning("Failed login attempt for {MaskedEmail}.", EmailMasking.Mask(request.Email));
             await _userManager.AccessFailedAsync(user);
             return AuthResult.Fail(invalidCredentials);
         }
