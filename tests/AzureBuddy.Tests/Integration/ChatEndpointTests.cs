@@ -32,7 +32,7 @@ public class ChatEndpointTests : IntegrationTestBase
         using var client = await CreateAuthenticatedClientAsync();
         Factory.ChatClient.ReplyText = "Hi there!";
 
-        var response = await client.PostAsJsonAsync("/chat", new ChatRequest(null, "hello"));
+        var response = await client.PostAsJsonAsync("/api/chat", new ChatRequest(null, "hello"));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<ChatResponse>(JsonOptions);
@@ -46,7 +46,7 @@ public class ChatEndpointTests : IntegrationTestBase
         using var client = await CreateAuthenticatedClientAsync();
         Factory.ChatClient.ReplyText = "Sure, here you go.";
 
-        var response = await client.PostAsJsonAsync("/chat", new ChatRequest(null, "what are my open items"));
+        var response = await client.PostAsJsonAsync("/api/chat", new ChatRequest(null, "what are my open items"));
         var body = await response.Content.ReadFromJsonAsync<ChatResponse>(JsonOptions);
 
         var detail = await client.GetFromJsonAsync<ChatSessionDetail>($"/api/chats/{body!.SessionId}", JsonOptions);
@@ -62,10 +62,10 @@ public class ChatEndpointTests : IntegrationTestBase
     {
         using var client = await CreateAuthenticatedClientAsync();
         Factory.ChatClient.ReplyText = "First reply";
-        var first = await (await client.PostAsJsonAsync("/chat", new ChatRequest(null, "first message"))).Content.ReadFromJsonAsync<ChatResponse>(JsonOptions);
+        var first = await (await client.PostAsJsonAsync("/api/chat", new ChatRequest(null, "first message"))).Content.ReadFromJsonAsync<ChatResponse>(JsonOptions);
 
         Factory.ChatClient.ReplyText = "Second reply";
-        var second = await (await client.PostAsJsonAsync("/chat", new ChatRequest(first!.SessionId, "second message"))).Content.ReadFromJsonAsync<ChatResponse>(JsonOptions);
+        var second = await (await client.PostAsJsonAsync("/api/chat", new ChatRequest(first!.SessionId, "second message"))).Content.ReadFromJsonAsync<ChatResponse>(JsonOptions);
 
         Assert.Equal(first.SessionId, second!.SessionId);
         var detail = await client.GetFromJsonAsync<ChatSessionDetail>($"/api/chats/{first.SessionId}", JsonOptions);
@@ -77,7 +77,7 @@ public class ChatEndpointTests : IntegrationTestBase
     {
         using var client = await CreateAuthenticatedClientAsync();
 
-        var response = await client.PostAsJsonAsync("/chat", new ChatRequest(Guid.NewGuid(), "hello"));
+        var response = await client.PostAsJsonAsync("/api/chat", new ChatRequest(Guid.NewGuid(), "hello"));
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -87,10 +87,10 @@ public class ChatEndpointTests : IntegrationTestBase
     {
         using var clientA = await CreateAuthenticatedClientAsync();
         Factory.ChatClient.ReplyText = "A's reply";
-        var sessionA = await (await clientA.PostAsJsonAsync("/chat", new ChatRequest(null, "A's message"))).Content.ReadFromJsonAsync<ChatResponse>(JsonOptions);
+        var sessionA = await (await clientA.PostAsJsonAsync("/api/chat", new ChatRequest(null, "A's message"))).Content.ReadFromJsonAsync<ChatResponse>(JsonOptions);
 
         using var clientB = await CreateAuthenticatedClientAsync();
-        var response = await clientB.PostAsJsonAsync("/chat", new ChatRequest(sessionA!.SessionId, "injected by B"));
+        var response = await clientB.PostAsJsonAsync("/api/chat", new ChatRequest(sessionA!.SessionId, "injected by B"));
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -100,7 +100,7 @@ public class ChatEndpointTests : IntegrationTestBase
     {
         using var client = await CreateAuthenticatedClientAsync();
 
-        var response = await client.PostAsJsonAsync("/chat", new ChatRequest(null, ""));
+        var response = await client.PostAsJsonAsync("/api/chat", new ChatRequest(null, ""));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -110,7 +110,7 @@ public class ChatEndpointTests : IntegrationTestBase
     {
         using var client = Factory.CreateHttpsClient();
 
-        var response = await client.PostAsJsonAsync("/chat", new ChatRequest(null, "hello"));
+        var response = await client.PostAsJsonAsync("/api/chat", new ChatRequest(null, "hello"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -124,7 +124,7 @@ public class ChatEndpointTests : IntegrationTestBase
         using var client = await CreateAuthenticatedClientAsync();
         Factory.ChatClient.ReplyText = "Just a plain reply.";
 
-        var response = await client.PostAsJsonAsync("/chat", new ChatRequest(null, "hello"));
+        var response = await client.PostAsJsonAsync("/api/chat", new ChatRequest(null, "hello"));
         var body = await response.Content.ReadFromJsonAsync<ChatResponse>(JsonOptions);
 
         Assert.Equal(ChatMessageType.Text, body!.Type);

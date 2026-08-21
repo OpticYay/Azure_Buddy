@@ -13,8 +13,9 @@ describe('MarkdownLitePipe', () => {
     const maliciousBaseUrl = 'https://dev.azure.com/org"><script>alert(1)</script><a href="';
     const table = ['| ID | Title |', '|----|-------|', '| 12 | Login |'].join('\n');
 
-    const html = (pipe.transform(table, maliciousBaseUrl) as { changingThisBreaksApplicationSecurity: string })
-      .changingThisBreaksApplicationSecurity;
+    const html = (
+      pipe.transform(table, maliciousBaseUrl) as { changingThisBreaksApplicationSecurity: string }
+    ).changingThisBreaksApplicationSecurity;
 
     expect(html).not.toContain('<script>');
     // The raw quote from workItemBaseUrl must have been escaped to &quot; rather than terminating the
