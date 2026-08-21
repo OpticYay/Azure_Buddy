@@ -122,15 +122,7 @@ public sealed class IntentExtractor
         };
     }
 
-    private static ChatIntent ParseIntent(string? value) => value switch
-    {
-        "create_bug" => ChatIntent.CreateBug,
-        "view_bugs" => ChatIntent.ViewBugs,
-        "update_item" => ChatIntent.UpdateItem,
-        "my_items" => ChatIntent.MyItems,
-        "prioritize_work_items" => ChatIntent.PrioritizeWorkItems,
-        _ => ChatIntent.Other
-    };
+    private static ChatIntent ParseIntent(string? value) => ChatIntentNames.Parse(value);
 
     private static readonly JsonSerializerOptions JsonSerializerOptions = new(JsonSerializerDefaults.Web);
 

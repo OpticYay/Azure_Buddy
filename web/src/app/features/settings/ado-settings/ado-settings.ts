@@ -61,7 +61,9 @@ export class AdoSettings implements OnInit {
       },
       error: () => {
         this.loading.set(false);
-        this.loadError.set('Could not load your ADO settings. Check your connection and try again.');
+        this.loadError.set(
+          'Could not load your ADO settings. Check your connection and try again.',
+        );
       },
     });
   }
@@ -118,7 +120,9 @@ export class AdoSettings implements OnInit {
         },
         error: (err: HttpErrorResponse) => {
           this.saving.set(false);
-          this.saveError.set(extractApiErrorMessage(err.error, 'Could not save your ADO settings.'));
+          this.saveError.set(
+            extractApiErrorMessage(err.error, 'Could not save your ADO settings.'),
+          );
         },
       });
   }
@@ -145,7 +149,11 @@ export class AdoSettings implements OnInit {
   confirmDelete(): void {
     // A plain browser confirm() dialog - blunt, but exactly the "confirmation prompt before firing"
     // this destructive action needs, without pulling in a whole modal-dialog component for one button.
-    if (!confirm('Remove this connection? Buddy will not be able to reach Azure DevOps until you add it again.')) {
+    if (
+      !confirm(
+        'Remove this connection? Buddy will not be able to reach Azure DevOps until you add it again.',
+      )
+    ) {
       return;
     }
 
@@ -153,7 +161,13 @@ export class AdoSettings implements OnInit {
     this.settingsService.delete().subscribe({
       next: () => {
         this.deleting.set(false);
-        this.settings.set({ isConfigured: false, organizationUrl: null, defaultProject: null, maskedPat: null, updatedAt: null });
+        this.settings.set({
+          isConfigured: false,
+          organizationUrl: null,
+          defaultProject: null,
+          maskedPat: null,
+          updatedAt: null,
+        });
         this.startEditing();
         this.toast.info('Connection removed.');
       },

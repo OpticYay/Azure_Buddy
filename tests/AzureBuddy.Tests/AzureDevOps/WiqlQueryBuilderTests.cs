@@ -157,4 +157,62 @@ public class WiqlQueryBuilderTests
     {
         Assert.Equal(expected, WiqlQueryBuilder.Escape(input));
     }
+
+    // Adversarial cases per 03-data-and-performance.md §3.8: Escape() is the sole barrier against WIQL
+    // injection through a title an attacker controls (e.g. a work item title used as CONTAINS input).
+    // Each case asserts the escaped output cannot terminate the surrounding string literal early.
+
+    [Fact]
+    public void Escape_QuoteImmediatelyFollowedByWiqlKeyword_CannotTerminateTheStringLiteralEarly()
+    {
+        // A naive single-pass or non-doubling escape could let `' OR '1'='1` style payloads close the
+        // literal early; doubling every quote (SearchByTitle wraps the escaped value in single quotes)
+        // means the whole payload stays inert data inside one literal, however it's shaped.
+        var payload = "x' OR '1'='1";
+        var query = WiqlQueryBuilder.SearchByTitle(payload);
+
+        Assert.Contains("CONTAINS 'x'' OR ''1''=''1'", query);
+        // The literal opened by CONTAINS ' must be the same one closed just before AND - i.e. exactly
+        // one (escaped) literal, not the payload's quotes prematurely closing and reopening it.
+        var containsIndex = query.IndexOf("CONTAINS '", StringComparison.Ordinal);
+        var afterOpenQuote = containsIndex + "CONTAINS '".Length;
+        var closingQuoteIndex = FindUnescapedClosingQuote(query, afterOpenQuote);
+        Assert.Equal("x'' OR ''1''=''1", query.Substring(afterOpenQuote, closingQuoteIndex - afterOpenQuote));
+    }
+
+    [Fact]
+    public void Escape_MultipleAdjacentQuotes_EachOneIsIndividuallyDoubled()
+    {
+        Assert.Equal("''''''", WiqlQueryBuilder.Escape("'''"));
+    }
+
+    [Fact]
+    public void Escape_QuoteAdjacentToOtherWiqlSignificantCharacters_StaysInertData()
+    {
+        // Brackets and parens are WIQL-significant elsewhere (field references, grouping) but Escape's
+        // only job is quote-doubling - confirm a quote sitting directly next to them still doubles
+        // correctly and doesn't get treated specially.
+        Assert.Equal("[System.Title]'' = ''x", WiqlQueryBuilder.Escape("[System.Title]' = 'x"));
+    }
+
+    /// <summary>Walks a WIQL string literal that started right after `start`, honoring `''` as an
+    /// escaped quote (not a terminator), and returns the index of the real closing quote.</summary>
+    private static int FindUnescapedClosingQuote(string text, int start)
+    {
+        var i = start;
+        while (i < text.Length)
+        {
+            if (text[i] == '\'')
+            {
+                if (i + 1 < text.Length && text[i + 1] == '\'')
+                {
+                    i += 2;
+                    continue;
+                }
+                return i;
+            }
+            i++;
+        }
+        throw new InvalidOperationException("No closing quote found - malformed test input.");
+    }
 }

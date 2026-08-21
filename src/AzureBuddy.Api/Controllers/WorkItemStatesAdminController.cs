@@ -1,3 +1,4 @@
+using AzureBuddy.Core.Common;
 using AzureBuddy.Core.WorkItemStates;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -40,13 +41,19 @@ public sealed class WorkItemStatesAdminController : ControllerBase
     public async Task<ActionResult<WorkItemStateView>> UpdateAsync(int id, UpdateWorkItemStateRequest request, CancellationToken cancellationToken)
     {
         var updated = await _service.UpdateAsync(id, request, cancellationToken);
-        return updated is null ? NotFound() : Ok(updated);
+        return updated is null ? StateConfigNotFound() : Ok(updated);
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> DeleteAsync(int id, CancellationToken cancellationToken)
     {
         var deleted = await _service.DeleteAsync(id, cancellationToken);
-        return deleted ? NoContent() : NotFound();
+        return deleted ? NoContent() : StateConfigNotFound();
     }
+
+    /// <summary>Same ApiErrorResponse shape GlobalExceptionHandler uses for unhandled exceptions,
+    /// instead of a bare empty-body NotFound() - see docs/improvements/04-refactor-and-dedup.md
+    /// §4.11.</summary>
+    private NotFoundObjectResult StateConfigNotFound() =>
+        NotFound(new ApiErrorResponse(new ApiError("not_found", "Work item state configuration not found.")));
 }

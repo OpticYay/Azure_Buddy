@@ -49,7 +49,9 @@
                  so there's no second line of prose restating it here. -->
             <div class="record__head">
               @if (workItemUrl(confirmation.workItemId); as url) {
-                <a class="stamp stamp--lg" [href]="url" target="_blank" rel="noopener">#{{ confirmation.workItemId }}</a>
+                <a class="stamp stamp--lg" [href]="url" target="_blank" rel="noopener"
+                  >#{{ confirmation.workItemId }}</a
+                >
               } @else {
                 <span class="stamp stamp--lg">#{{ confirmation.workItemId }}</span>
               }
@@ -85,7 +87,9 @@
                     @for (cell of row; track $index) {
                       <td [class.cell-id]="isIdColumn(tableMsg.headers[$index])">
                         @if (cellWorkItemUrl(tableMsg.headers[$index], cell); as url) {
-                          <a class="stamp" [href]="url" target="_blank" rel="noopener">#{{ cell }}</a>
+                          <a class="stamp" [href]="url" target="_blank" rel="noopener"
+                            >#{{ cell }}</a
+                          >
                         } @else {
                           {{ cell }}
                         }
@@ -108,7 +112,10 @@
         }
         <figure class="evidence">
           <a [href]="displayMessage().message.adoAttachmentUrl!" target="_blank" rel="noopener">
-            <img [src]="displayMessage().message.adoAttachmentUrl" alt="Screenshot attached as evidence" />
+            <img
+              [src]="displayMessage().message.adoAttachmentUrl"
+              alt="Screenshot attached as evidence"
+            />
           </a>
           @if (displayMessage().message.workItemId; as workItemId) {
             <figcaption>

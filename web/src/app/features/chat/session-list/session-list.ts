@@ -1,4 +1,14 @@
-import { Component, DestroyRef, ElementRef, OnInit, ViewChild, computed, effect, inject, signal } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  OnInit,
+  ViewChild,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
@@ -64,7 +74,10 @@ export class SessionList implements OnInit {
     effect(() => {
       const created = this.newChatService.created();
       if (created) {
-        this.sessions.update((existing) => [created, ...existing.filter((s) => s.id !== created.id)]);
+        this.sessions.update((existing) => [
+          created,
+          ...existing.filter((s) => s.id !== created.id),
+        ]);
       }
     });
   }
@@ -92,6 +105,11 @@ export class SessionList implements OnInit {
   readonly renamingRowWasActive = signal(false);
 
   @ViewChild('renameField') private renameFieldRef?: ElementRef<HTMLInputElement>;
+
+  /** Which session's delete button is armed (first click clicked, waiting for the confirming second
+   * click) - null when nothing is armed. See deleteSession() below. */
+  readonly confirmingDeleteId = signal<string | null>(null);
+  private confirmingDeleteTimeout?: ReturnType<typeof setTimeout>;
 
   ngOnInit(): void {
     this.loadNextPage(true);
@@ -154,9 +172,7 @@ export class SessionList implements OnInit {
 
   /** Opens the inline rename field for one row, seeded with its current title - not the empty string,
    * since renaming is an edit, not "type a new title from scratch." */
-  startRename(session: ChatSessionSummary, event: Event): void {
-    event.stopPropagation();
-    event.preventDefault();
+  startRename(session: ChatSessionSummary): void {
     this.renamingRowWasActive.set(this.router.url.includes(session.id));
     this.renamingId.set(session.id);
     this.renameText.set(session.title);
@@ -202,15 +218,16 @@ export class SessionList implements OnInit {
     });
   }
 
-  deleteSession(session: ChatSessionSummary, event: Event): void {
-    // This button sits inside the same row as a routerLink <a> - stop the click from also triggering
-    // that link's navigation (otherwise deleting a session would also navigate to it first).
-    event.stopPropagation();
-    event.preventDefault();
-
-    if (!confirm(`Delete "${session.title}"? This cannot be undone.`)) {
+  /** First click arms the button (× becomes a "click again to confirm" checkmark, auto-disarming
+   * after a few seconds); the second click, while armed, actually deletes. Replaces a native
+   * `window.confirm()` dialog, which was jarringly inconsistent with the rest of the app's own
+   * in-line UI (the same reasoning as the inline rename field above rather than a browser prompt). */
+  deleteSession(session: ChatSessionSummary): void {
+    if (this.confirmingDeleteId() !== session.id) {
+      this.armDeleteConfirmation(session.id);
       return;
     }
+    this.clearDeleteConfirmation();
 
     const wasCurrentlyOpen = this.router.url.includes(session.id);
 
@@ -223,5 +240,18 @@ export class SessionList implements OnInit {
       },
       error: () => this.loadError.set('Could not delete that session.'),
     });
+  }
+
+  private armDeleteConfirmation(sessionId: string): void {
+    this.confirmingDeleteId.set(sessionId);
+    clearTimeout(this.confirmingDeleteTimeout);
+    // An armed button left untouched reverts on its own, so a stray first click doesn't leave a
+    // delete silently primed to fire on whatever gets clicked next.
+    this.confirmingDeleteTimeout = setTimeout(() => this.clearDeleteConfirmation(), 4000);
+  }
+
+  private clearDeleteConfirmation(): void {
+    clearTimeout(this.confirmingDeleteTimeout);
+    this.confirmingDeleteId.set(null);
   }
 }

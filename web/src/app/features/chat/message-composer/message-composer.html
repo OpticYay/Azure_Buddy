@@ -4,7 +4,7 @@
       <!-- [@popIn] plays as this block enters the DOM - i.e. the moment a screenshot is attached -
            so the preview scales in rather than appearing abruptly. -->
       <div class="attach" [@popIn]>
-        <img class="attach__thumb" [src]="attachedPreviewUrl()" alt="" />
+        <img class="attach__thumb" [src]="attachedPreviewUrl()" alt="Attached screenshot preview" />
 
         <div class="attach__fields">
           <p class="attach__name">{{ file.name }}</p>
@@ -36,13 +36,24 @@
     }
 
     @if (errorMessage()) {
-      <p class="composer__error">{{ errorMessage() }}</p>
+      <p class="composer__error" role="alert">{{ errorMessage() }}</p>
     }
 
-    <div class="entry-row">
+    <div class="entry-row" [attr.aria-busy]="sending() ? 'true' : null">
       <label class="clip" title="Attach a screenshot">
-        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
-          <path d="M10.5 5 6 9.5a1.8 1.8 0 0 0 2.5 2.5l5-5a3.2 3.2 0 0 0-4.5-4.5l-5.2 5.2a4.6 4.6 0 0 0 6.5 6.5l3.2-3.2" />
+        <svg
+          viewBox="0 0 16 16"
+          width="15"
+          height="15"
+          aria-hidden="true"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.4"
+          stroke-linecap="round"
+        >
+          <path
+            d="M10.5 5 6 9.5a1.8 1.8 0 0 0 2.5 2.5l5-5a3.2 3.2 0 0 0-4.5-4.5l-5.2 5.2a4.6 4.6 0 0 0 6.5 6.5l3.2-3.2"
+          />
         </svg>
         <span class="sr-only">Attach a screenshot</span>
         <input type="file" accept="image/*" (change)="onFileSelected($event)" hidden />
@@ -56,8 +67,13 @@
         rows="1"
         placeholder="Describe a defect or paste a screenshot"
         (paste)="onPaste($event)"
+        (input)="autoGrow($event)"
         (keydown.enter)="onEnterKey($event)"
       ></textarea>
+
+      @if (sending()) {
+        <button type="button" class="stop" (click)="stop()">Stop</button>
+      }
 
       <button type="button" class="send" (click)="send()" [disabled]="sending()">
         {{ sending() ? 'Sending' : 'Send' }}

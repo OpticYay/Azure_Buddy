@@ -35,7 +35,10 @@
   background: var(--surface);
   color: var(--ink-500, var(--ink-400));
   cursor: pointer;
-  transition: border-color var(--t-fast), color var(--t-fast), background var(--t-fast);
+  transition:
+    border-color var(--t-fast),
+    color var(--t-fast),
+    background var(--t-fast);
 }
 
 .clip:hover {
@@ -95,6 +98,25 @@ textarea:focus-visible {
 .send:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.stop {
+  flex-shrink: 0;
+  height: 36px;
+  padding: 0 var(--space-md);
+  border: 1px solid var(--fail-rule);
+  border-radius: var(--r-sm);
+  background: var(--fail-wash);
+  color: var(--fail);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 500;
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+}
+
+.stop:hover {
+  background: var(--fail-rule);
 }
 
 /* ── Attachment tray ─────────────────────────────────────────────────────────────────────────
@@ -204,15 +226,6 @@ textarea:focus-visible {
   border-radius: var(--r-sm);
   color: var(--fail);
   font-size: var(--t-sm);
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
 }
 
 @media (max-width: 720px) {

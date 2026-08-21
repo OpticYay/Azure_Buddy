@@ -8,7 +8,10 @@ import { animate, query, stagger, state, style, transition, trigger } from '@ang
 export const fadeSlideIn = trigger('fadeSlideIn', [
   transition(':enter', [
     style({ opacity: 0, transform: 'translateY(6px)' }),
-    animate('200ms cubic-bezier(0.3, 0, 0.2, 1)', style({ opacity: 1, transform: 'translateY(0)' })),
+    animate(
+      '200ms cubic-bezier(0.3, 0, 0.2, 1)',
+      style({ opacity: 1, transform: 'translateY(0)' }),
+    ),
   ]),
 ]);
 
@@ -35,9 +38,14 @@ export const crossFade = trigger('crossFade', [
 export const toastSlide = trigger('toastSlide', [
   transition(':enter', [
     style({ opacity: 0, transform: 'translateX(20px)' }),
-    animate('190ms cubic-bezier(0.3, 0, 0.2, 1)', style({ opacity: 1, transform: 'translateX(0)' })),
+    animate(
+      '190ms cubic-bezier(0.3, 0, 0.2, 1)',
+      style({ opacity: 1, transform: 'translateX(0)' }),
+    ),
   ]),
-  transition(':leave', [animate('170ms ease-in', style({ opacity: 0, transform: 'translateX(20px)' }))]),
+  transition(':leave', [
+    animate('170ms ease-in', style({ opacity: 0, transform: 'translateX(20px)' })),
+  ]),
 ]);
 
 /** Conversation rows arriving in the sidebar, one shortly after the next.
@@ -53,7 +61,10 @@ export const listStagger = trigger('listStagger', [
       '.session',
       [
         style({ opacity: 0, transform: 'translateX(-8px)' }),
-        stagger(35, animate('200ms cubic-bezier(0.3, 0, 0.2, 1)', style({ opacity: 1, transform: 'none' }))),
+        stagger(
+          35,
+          animate('200ms cubic-bezier(0.3, 0, 0.2, 1)', style({ opacity: 1, transform: 'none' })),
+        ),
       ],
       { optional: true },
     ),
@@ -69,7 +80,10 @@ export const openerStagger = trigger('openerStagger', [
       '.opener__lead, .opener__hint, .starter',
       [
         style({ opacity: 0, transform: 'translateY(8px)' }),
-        stagger(55, animate('260ms cubic-bezier(0.3, 0, 0.2, 1)', style({ opacity: 1, transform: 'none' }))),
+        stagger(
+          55,
+          animate('260ms cubic-bezier(0.3, 0, 0.2, 1)', style({ opacity: 1, transform: 'none' })),
+        ),
       ],
       { optional: true },
     ),

@@ -41,7 +41,9 @@ export class ConfirmEmail implements OnInit {
       },
       error: (err: HttpErrorResponse) => {
         this.state.set('error');
-        this.errorMessage.set(extractApiErrorMessage(err.error, 'This confirmation link is invalid or has expired.'));
+        this.errorMessage.set(
+          extractApiErrorMessage(err.error, 'This confirmation link is invalid or has expired.'),
+        );
       },
     });
   }

@@ -19,6 +19,13 @@ public sealed class AzureBuddyAgent : IConversationalAgent
 {
     private const int MaxToolCallRounds = 8;
 
+    /// <summary>Exposed for AzureBuddyAgentTests to assert the "HTML RULE" line below (Scenario A,
+    /// step 4) stays byte-consistent with <see cref="AzureDevOps.BugDescriptionTemplate.PromptRule"/> -
+    /// the two can't be merged into one literal (this prompt is a plain-text instruction to the LLM,
+    /// not real HTML being emitted), but a test keeps them from silently drifting apart. See
+    /// docs/improvements/04-refactor-and-dedup.md §4.5.</summary>
+    internal static string SystemPromptForTests => SystemPrompt;
+
     private const string SystemPrompt = """
         Role: Expert QA Assistant managing Azure DevOps via n8n.
 

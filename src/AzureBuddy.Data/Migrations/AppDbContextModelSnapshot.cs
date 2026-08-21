@@ -100,7 +100,8 @@ namespace AzureBuddy.Data.Migrations
                         .HasColumnType("char(36)");
 
                     b.Property<string>("AdoAttachmentUrl")
-                        .HasColumnType("longtext");
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
 
                     b.Property<string>("Content")
                         .IsRequired()
@@ -111,7 +112,8 @@ namespace AzureBuddy.Data.Migrations
 
                     b.Property<string>("Role")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
 
                     b.Property<Guid>("SessionId")
                         .HasColumnType("char(36)");
@@ -127,7 +129,7 @@ namespace AzureBuddy.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SessionId");
+                    b.HasIndex("SessionId", "CreatedAt");
 
                     b.ToTable("ChatMessages");
                 });
@@ -143,7 +145,8 @@ namespace AzureBuddy.Data.Migrations
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
@@ -154,7 +157,7 @@ namespace AzureBuddy.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("UserId", "UpdatedAt");
 
                     b.ToTable("ChatSessions");
                 });
@@ -166,25 +169,30 @@ namespace AzureBuddy.Data.Migrations
 
                     b.Property<string>("GeminiBaseUrl")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
 
                     b.Property<string>("GeminiEncryptedApiKey")
-                        .HasColumnType("longtext");
+                        .HasMaxLength(1024)
+                        .HasColumnType("varchar(1024)");
 
                     b.Property<string>("GeminiModel")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
 
                     b.Property<int>("GeminiTimeoutSeconds")
                         .HasColumnType("int");
 
                     b.Property<string>("OllamaBaseUrl")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
 
                     b.Property<string>("OllamaModel")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
 
                     b.Property<int>("OllamaNumCtx")
                         .HasColumnType("int");
@@ -194,7 +202,8 @@ namespace AzureBuddy.Data.Migrations
 
                     b.Property<string>("ProvidersCsv")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
@@ -231,7 +240,7 @@ namespace AzureBuddy.Data.Migrations
 
                     b.HasIndex("TokenHash");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("UserId", "RevokedAt");
 
                     b.ToTable("RefreshTokens");
                 });
@@ -246,15 +255,18 @@ namespace AzureBuddy.Data.Migrations
 
                     b.Property<string>("DefaultProject")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
 
                     b.Property<string>("EncryptedPat")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(1024)
+                        .HasColumnType("varchar(1024)");
 
                     b.Property<string>("OrganizationUrl")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");

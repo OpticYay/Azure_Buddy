@@ -145,11 +145,26 @@
   gap: var(--space-sm);
   padding: 7px var(--space-sm);
   border-radius: var(--r-sm);
-  text-decoration: none;
   color: var(--ink-700);
   min-height: 34px;
   border-left: 2px solid transparent;
-  transition: background var(--t-fast), border-color var(--t-fast), transform var(--t-fast);
+  transition:
+    background var(--t-fast),
+    border-color var(--t-fast),
+    transform var(--t-fast);
+}
+
+/* The link only wraps the identity/navigation part of the row (initial, title, time) - the
+   rename/delete buttons are its siblings, not its children, so this only needs to take over the
+   flex space they don't. */
+.session__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex: 1;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
 }
 
 .session:hover {
@@ -219,6 +234,11 @@
 
 .session__remove:hover {
   color: var(--fail);
+}
+
+.session__remove.is-confirming {
+  color: var(--fail);
+  font-weight: 700;
 }
 
 .session__rename {
@@ -305,15 +325,6 @@
   justify-content: center;
   padding-left: 0;
   padding-right: 0;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
 }
 
 /* No breakpoint here on purpose. "The screen is too narrow for a full rail" is decided once, in

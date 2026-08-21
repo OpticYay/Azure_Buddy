@@ -7,10 +7,38 @@
 }
 
 .thread {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
+}
+
+/* Floats above the log/composer boundary rather than taking up flex flow space, since it only
+   appears intermittently (see MessageThread.hasUnseenMessages()) and shouldn't shift the composer
+   up and down as it comes and goes. */
+.jump-latest {
+  position: absolute;
+  bottom: var(--space-md);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px var(--space-md);
+  border: 1px solid var(--ink-900);
+  border-radius: var(--r-full, 999px);
+  background: var(--ink-900);
+  color: var(--surface);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 500;
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  box-shadow: var(--shadow-float, 0 4px 16px rgba(0, 0, 0, 0.2));
+  z-index: 1;
+}
+
+.jump-latest:hover {
+  background: var(--ink-700);
+  border-color: var(--ink-700);
 }
 
 .log {

@@ -6,5 +6,5 @@
 // (ASP.NET Core's own default is 5000 when no launchSettings profile applies), so check your API's
 // console output ("Now listening on: ...") and update this value to match.
 export const environment = {
-  apiUrl: 'http://localhost:5013',
+  apiUrl: 'http://localhost:8080',
 };

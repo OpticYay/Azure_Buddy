@@ -4,8 +4,6 @@ namespace AzureBuddy.Core.AzureDevOps;
 
 public sealed class AdoAttachmentService : IAdoAttachmentService
 {
-    private const string EvidencePlaceholder = "<b>Evidence:</b> Not provided";
-
     private readonly IAdoClient _adoClient;
     private readonly ILogger<AdoAttachmentService> _logger;
 
@@ -76,8 +74,8 @@ public sealed class AdoAttachmentService : IAdoAttachmentService
             ? (AdoFields.ReproSteps, item.ReproSteps)
             : (AdoFields.Description, item?.Description ?? string.Empty);
 
-        var updated = current.Contains(EvidencePlaceholder)
-            ? current.Replace(EvidencePlaceholder, evidenceHtml)
+        var updated = current.Contains(BugDescriptionTemplate.EvidencePlaceholder)
+            ? current.Replace(BugDescriptionTemplate.EvidencePlaceholder, evidenceHtml)
             : string.IsNullOrEmpty(current)
                 ? evidenceHtml
                 : $"{current}<br><br>{evidenceHtml}";

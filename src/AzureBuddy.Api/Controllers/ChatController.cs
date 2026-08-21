@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using AzureBuddy.Core.Auth;
 using AzureBuddy.Core.AzureDevOps;
 using AzureBuddy.Core.Chat;
+using AzureBuddy.Core.Common;
 using AzureBuddy.Core.Routing;
 using AzureBuddy.Core.Settings;
 using AzureBuddy.Data.Entities;
@@ -78,7 +79,7 @@ public sealed class ChatController : ControllerBase
         if (request.SessionId is not null && session is null)
         {
             // Either a bad id or (deliberately, to avoid leaking existence) someone else's session id.
-            return NotFound("Chat session not found.");
+            return NotFound(new ApiErrorResponse(new ApiError("not_found", "Chat session not found.")));
         }
 
         session ??= await _chatSessionService.CreateSessionAsync(userId, title: null, cancellationToken);

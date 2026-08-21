@@ -27,14 +27,18 @@
         </dl>
 
         <div class="actions">
-          <button type="button" class="btn btn--primary" (click)="startEditingProfile()">Edit profile</button>
+          <button type="button" class="btn btn--primary" (click)="startEditingProfile()">
+            Edit profile
+          </button>
         </div>
       } @else {
         <form [formGroup]="profileForm" (ngSubmit)="saveProfile()">
           <label class="field">
             <span class="micro">Display name</span>
             <input type="text" formControlName="displayName" />
-            @if (profileForm.controls.displayName.touched && profileForm.controls.displayName.invalid) {
+            @if (
+              profileForm.controls.displayName.touched && profileForm.controls.displayName.invalid
+            ) {
               <span class="field__error">Required.</span>
             }
           </label>
@@ -55,7 +59,14 @@
             <button type="submit" class="btn btn--primary" [disabled]="savingProfile()">
               {{ savingProfile() ? 'Saving…' : 'Save' }}
             </button>
-            <button type="button" class="btn" (click)="cancelEditingProfile()" [disabled]="savingProfile()">Cancel</button>
+            <button
+              type="button"
+              class="btn"
+              (click)="cancelEditingProfile()"
+              [disabled]="savingProfile()"
+            >
+              Cancel
+            </button>
           </div>
         </form>
       }
@@ -67,7 +78,11 @@
       <form [formGroup]="passwordForm" (ngSubmit)="changePassword()">
         <label class="field">
           <span class="micro">Current password</span>
-          <input type="password" formControlName="currentPassword" autocomplete="current-password" />
+          <input
+            type="password"
+            formControlName="currentPassword"
+            autocomplete="current-password"
+          />
           @if (passwordFieldErrors()['currentPassword']) {
             <span class="field__error">{{ passwordFieldErrors()['currentPassword'] }}</span>
           }
@@ -76,9 +91,15 @@
         <label class="field">
           <span class="micro">New password</span>
           <input type="password" formControlName="newPassword" autocomplete="new-password" />
-          @if (passwordForm.controls.newPassword.touched && passwordForm.controls.newPassword.hasError('required')) {
+          @if (
+            passwordForm.controls.newPassword.touched &&
+            passwordForm.controls.newPassword.hasError('required')
+          ) {
             <span class="field__error">Required.</span>
-          } @else if (passwordForm.controls.newPassword.touched && passwordForm.controls.newPassword.hasError('minlength')) {
+          } @else if (
+            passwordForm.controls.newPassword.touched &&
+            passwordForm.controls.newPassword.hasError('minlength')
+          ) {
             <span class="field__error">At least 8 characters.</span>
           } @else if (passwordFieldErrors()['newPassword']) {
             <span class="field__error">{{ passwordFieldErrors()['newPassword'] }}</span>
@@ -88,7 +109,9 @@
         <label class="field">
           <span class="micro">Confirm new password</span>
           <input type="password" formControlName="confirmNewPassword" autocomplete="new-password" />
-          @if (passwordForm.controls.confirmNewPassword.touched && passwordForm.hasError('mismatch')) {
+          @if (
+            passwordForm.controls.confirmNewPassword.touched && passwordForm.hasError('mismatch')
+          ) {
             <span class="field__error">Passwords don't match.</span>
           }
         </label>

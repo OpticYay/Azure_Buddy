@@ -1,6 +1,7 @@
 using AzureBuddy.Data;
 using AzureBuddy.Data.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace AzureBuddy.Core.WorkItemStates;
 
@@ -12,16 +13,23 @@ namespace AzureBuddy.Core.WorkItemStates;
 /// </summary>
 public sealed class WorkItemStateConfigService
 {
-    private readonly AppDbContext _dbContext;
+    private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
 
-    public WorkItemStateConfigService(AppDbContext dbContext)
+    private readonly AppDbContext _dbContext;
+    private readonly IMemoryCache _cache;
+
+    public WorkItemStateConfigService(AppDbContext dbContext, IMemoryCache cache)
     {
         _dbContext = dbContext;
+        _cache = cache;
     }
+
+    private static string EnabledStateNamesCacheKey(string workItemType) => $"WorkItemStateConfig:EnabledStateNames:{workItemType}";
 
     public async Task<IReadOnlyList<WorkItemTypeStatesView>> GetAllGroupedAsync(CancellationToken cancellationToken = default)
     {
         var rows = await _dbContext.WorkItemStateConfigurations
+            .AsNoTracking()
             .OrderBy(s => s.WorkItemType)
             .ThenBy(s => s.DisplayOrder)
             .ToListAsync(cancellationToken);
@@ -36,12 +44,28 @@ public sealed class WorkItemStateConfigService
     /// admin config exists for this type yet" - callers (UpdateItemFlow, AdoWorkItemToolset) treat
     /// that as "nothing to validate against" and fall back to letting Azure DevOps itself accept or
     /// reject the state, rather than blocking every update for a type nobody has configured.</summary>
-    public Task<List<string>> GetEnabledStateNamesAsync(string workItemType, CancellationToken cancellationToken = default) =>
-        _dbContext.WorkItemStateConfigurations
+    public async Task<List<string>> GetEnabledStateNamesAsync(string workItemType, CancellationToken cancellationToken = default)
+    {
+        var cacheKey = EnabledStateNamesCacheKey(workItemType);
+        if (_cache.TryGetValue(cacheKey, out List<string>? cached))
+        {
+            return cached!;
+        }
+
+        var names = await _dbContext.WorkItemStateConfigurations
+            .AsNoTracking()
             .Where(s => s.WorkItemType == workItemType && s.IsEnabled)
             .OrderBy(s => s.DisplayOrder)
             .Select(s => s.StateName)
             .ToListAsync(cancellationToken);
+
+        // Short TTL rather than event-driven invalidation across replicas: the write paths below
+        // (Create/Update/Delete) already evict this process's own cache entry immediately, so the TTL
+        // only matters for other replicas picking up an admin's change - acceptable staleness for a
+        // config that changes rarely.
+        _cache.Set(cacheKey, names, CacheDuration);
+        return names;
+    }
 
     public async Task<WorkItemStateView> CreateAsync(CreateWorkItemStateRequest request, CancellationToken cancellationToken = default)
     {
@@ -55,6 +79,7 @@ public sealed class WorkItemStateConfigService
 
         _dbContext.WorkItemStateConfigurations.Add(row);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _cache.Remove(EnabledStateNamesCacheKey(row.WorkItemType));
         return ToView(row);
     }
 
@@ -72,6 +97,7 @@ public sealed class WorkItemStateConfigService
         row.UpdatedAt = DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _cache.Remove(EnabledStateNamesCacheKey(row.WorkItemType));
         return ToView(row);
     }
 
@@ -85,6 +111,7 @@ public sealed class WorkItemStateConfigService
 
         _dbContext.WorkItemStateConfigurations.Remove(row);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _cache.Remove(EnabledStateNamesCacheKey(row.WorkItemType));
         return true;
     }
 

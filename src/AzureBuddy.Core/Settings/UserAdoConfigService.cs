@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using AzureBuddy.Core.AzureDevOps;
+using AzureBuddy.Core.Common;
 using AzureBuddy.Data;
 using AzureBuddy.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -30,7 +31,9 @@ public sealed class UserAdoConfigService
 
     public async Task<AdoSettingsView> GetAsync(string userId, CancellationToken cancellationToken = default)
     {
-        var settings = await FindByUserAsync(userId, cancellationToken);
+        var settings = await _dbContext.UserAdoSettings
+            .AsNoTracking()
+            .SingleOrDefaultAsync(s => s.UserId == userId, cancellationToken);
         return ToView(settings, _patProtector);
     }
 
@@ -81,7 +84,9 @@ public sealed class UserAdoConfigService
     /// this call site doesn't need its own try/catch on top of TestConnectionAsync's.</summary>
     public async Task<AdoConnectionContext?> GetConnectionContextAsync(string userId, CancellationToken cancellationToken = default)
     {
-        var settings = await FindByUserAsync(userId, cancellationToken);
+        var settings = await _dbContext.UserAdoSettings
+            .AsNoTracking()
+            .SingleOrDefaultAsync(s => s.UserId == userId, cancellationToken);
         if (settings is null)
         {
             return null;
@@ -161,9 +166,7 @@ public sealed class UserAdoConfigService
     {
         try
         {
-            var pat = patProtector.Decrypt(settings.EncryptedPat);
-            var lastFour = pat.Length >= 4 ? pat[^4..] : pat;
-            return new string('•', 8) + lastFour;
+            return SecretMasking.Mask(patProtector.Decrypt(settings.EncryptedPat));
         }
         catch (CryptographicException)
         {

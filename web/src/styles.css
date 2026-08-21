@@ -69,7 +69,9 @@ h3,
   letter-spacing: 0.01em;
   text-decoration: none;
   white-space: nowrap;
-  transition: background var(--t-fast), border-color var(--t-fast);
+  transition:
+    background var(--t-fast),
+    border-color var(--t-fast);
 }
 
 a.stamp:hover {
@@ -82,8 +84,12 @@ button {
   font-size: inherit;
   color: inherit;
   cursor: pointer;
-  transition: background-color var(--t-fast), border-color var(--t-fast), color var(--t-fast),
-    transform var(--t-fast), opacity var(--t-fast);
+  transition:
+    background-color var(--t-fast),
+    border-color var(--t-fast),
+    color var(--t-fast),
+    transform var(--t-fast),
+    opacity var(--t-fast);
 }
 
 button:active:not(:disabled) {
@@ -95,12 +101,27 @@ textarea {
   font-family: inherit;
   font-size: inherit;
   color: inherit;
-  transition: border-color var(--t-fast), box-shadow var(--t-fast), background-color var(--t-fast);
+  transition:
+    border-color var(--t-fast),
+    box-shadow var(--t-fast),
+    background-color var(--t-fast);
 }
 
 input::placeholder,
 textarea::placeholder {
   color: var(--ink-300);
+}
+
+/* Visually hidden but still reachable by screen readers - used for labels that would be redundant
+   or too cluttered to show sighted users but are still needed for an accessible name. Defined once
+   here rather than duplicated per-component, since several components need it. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 /* One focus treatment for the whole app. :focus-visible (not :focus) means it appears for keyboard

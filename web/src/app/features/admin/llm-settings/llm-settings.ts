@@ -53,9 +53,12 @@ export class LlmSettings implements OnInit {
   // when *something else* triggers change detection. toSignal ties it to valueChanges, which is a
   // reliable, guaranteed re-render trigger (see message-composer.ts for the version of this bug
   // where a plain field write silently didn't reach the DOM).
-  private readonly primaryProviderValue = toSignal(this.form.controls.primaryProvider.valueChanges, {
-    initialValue: this.form.controls.primaryProvider.value,
-  });
+  private readonly primaryProviderValue = toSignal(
+    this.form.controls.primaryProvider.valueChanges,
+    {
+      initialValue: this.form.controls.primaryProvider.value,
+    },
+  );
   private readonly useFallbackValue = toSignal(this.form.controls.useFallback.valueChanges, {
     initialValue: this.form.controls.useFallback.value,
   });
@@ -63,8 +66,12 @@ export class LlmSettings implements OnInit {
   // A provider's fields only matter if Buddy will actually call it: as the primary, always; as the
   // fallback, only once "try the other provider" is switched on. Otherwise its fieldset just adds
   // noise to a form for a provider nothing will ever use - so it stays hidden, not merely disabled.
-  readonly geminiFieldsVisible = computed(() => this.primaryProviderValue() === 'Gemini' || this.useFallbackValue());
-  readonly ollamaFieldsVisible = computed(() => this.primaryProviderValue() === 'Ollama' || this.useFallbackValue());
+  readonly geminiFieldsVisible = computed(
+    () => this.primaryProviderValue() === 'Gemini' || this.useFallbackValue(),
+  );
+  readonly ollamaFieldsVisible = computed(
+    () => this.primaryProviderValue() === 'Ollama' || this.useFallbackValue(),
+  );
 
   readonly viewGeminiVisible = computed(() => {
     const s = this.settings();

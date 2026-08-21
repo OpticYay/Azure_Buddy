@@ -6,6 +6,7 @@ using AzureBuddy.Core.WorkItemStates;
 using AzureBuddy.Data;
 using AzureBuddy.Tests.Integration;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -63,7 +64,7 @@ public class AzureBuddyAgentTests
             Current = new AdoConnectionContext("https://dev.azure.com/org", "Proj", "fake-pat"),
         };
         var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
-        var stateConfigService = new WorkItemStateConfigService(new AppDbContext(options));
+        var stateConfigService = new WorkItemStateConfigService(new AppDbContext(options), new MemoryCache(new MemoryCacheOptions()));
         return new ToolCatalog(new AdoWorkItemToolset(adoClient, connectionAccessor, stateConfigService));
     }
 
@@ -134,5 +135,14 @@ public class AzureBuddyAgentTests
 
         Assert.Equal("Here you go.", reply);
         Assert.Single(historyStore.Saved);
+    }
+
+    [Fact]
+    public void SystemPrompt_BugDescriptionRule_MatchesSharedTemplate()
+    {
+        // Guards against the three-way HTML-template duplication described in
+        // docs/improvements/04-refactor-and-dedup.md §4.5: CreateBugFlow, this prompt, and
+        // AdoAttachmentService must all agree on the bug-description shape.
+        Assert.Contains(BugDescriptionTemplate.PromptRule, AzureBuddyAgent.SystemPromptForTests);
     }
 }

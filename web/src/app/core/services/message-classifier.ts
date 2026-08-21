@@ -20,9 +20,19 @@ export function classifyMessage(message: ChatMessageView): DisplayMessage {
 
   switch (message.type) {
     case 'Confirmation':
-      return { type: 'confirmation', message, workItemId: message.workItemId ?? 0, summary: message.content };
+      return {
+        type: 'confirmation',
+        message,
+        workItemId: message.workItemId ?? 0,
+        summary: message.content,
+      };
     case 'Table':
-      return { type: 'table', message, headers: message.table?.headers ?? [], rows: message.table?.rows ?? [] };
+      return {
+        type: 'table',
+        message,
+        headers: message.table?.headers ?? [],
+        rows: message.table?.rows ?? [],
+      };
     case 'Error':
       return { type: 'error', message };
     case 'Text':

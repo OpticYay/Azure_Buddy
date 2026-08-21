@@ -9,6 +9,7 @@ using AzureBuddy.Core.WorkItemStates;
 using AzureBuddy.Data;
 using AzureBuddy.Tests.Integration;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -98,7 +99,7 @@ public class IntentRouterTests
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        return new WorkItemStateConfigService(new AppDbContext(options));
+        return new WorkItemStateConfigService(new AppDbContext(options), new MemoryCache(new MemoryCacheOptions()));
     }
 
     private const string MyItemsWithAdditionalRequestExtraction =

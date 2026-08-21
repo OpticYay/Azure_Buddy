@@ -19,12 +19,6 @@ namespace AzureBuddy.Core.Agent;
 /// </summary>
 public sealed class AdoWorkItemToolset
 {
-    private static readonly string[] WorkItemFieldsWithUrgency =
-    {
-        AdoFields.Title, AdoFields.WorkItemType, AdoFields.State,
-        AdoFields.Priority, AdoFields.StartDate, AdoFields.TargetDate, AdoFields.DueDate, AdoFields.FinishDate
-    };
-
     private readonly IAdoClient _adoClient;
     private readonly AdoConnectionContextAccessor _connectionAccessor;
     private readonly WorkItemStateConfigService _stateConfigService;
@@ -48,19 +42,7 @@ public sealed class AdoWorkItemToolset
 
         try
         {
-            // Try the phrase as typed first - an exact substring hit is the most precise answer. Only if
-            // that finds nothing do we widen to matching the words separately, so a confident phrase match
-            // is never diluted by looser results.
-            var ids = await _adoClient.QueryWiqlAsync(connection, WiqlQueryBuilder.SearchByTitle(name), ct);
-
-            if (ids.Count == 0)
-            {
-                var words = WiqlQueryBuilder.SearchWords(name);
-                if (words.Count > 0)
-                {
-                    ids = await _adoClient.QueryWiqlAsync(connection, WiqlQueryBuilder.SearchByTitleWords(words), ct);
-                }
-            }
+            var ids = await AdoWorkItemQueries.SearchIdsByTitleAsync(_adoClient, connection, name, ct);
 
             if (ids.Count == 0)
             {
@@ -95,18 +77,10 @@ public sealed class AdoWorkItemToolset
         var description = GetString(args, "description");
         var parentId = TextUtils.DigitsOnly(GetString(args, "parent_id"));
 
-        var ops = new List<JsonPatchOperation>
-        {
-            JsonPatchOperation.Add($"/fields/{AdoFields.Title}", title),
-            JsonPatchOperation.Add($"/fields/{AdoFields.ReproSteps}", description),
-            AdoRelationOps.ParentLink($"{connection.OrganizationUrl.TrimEnd('/')}/{connection.Project}/_apis/wit/workItems/{parentId}")
-        };
-
-        AddOptionalField(ops, args, "priority", AdoFields.Priority);
-        AddOptionalField(ops, args, "severity", AdoFields.Severity);
-        AddOptionalField(ops, args, "area_path", AdoFields.AreaPath);
-        AddOptionalField(ops, args, "iteration_path", AdoFields.IterationPath);
-        AddOptionalField(ops, args, "assigned_to", AdoFields.AssignedTo);
+        var ops = BugCreationRequestBuilder.BuildOps(
+            connection, title, description, parentId,
+            GetOptionalString(args, "priority"), GetOptionalString(args, "severity"),
+            GetOptionalString(args, "area_path"), GetOptionalString(args, "iteration_path"), GetOptionalString(args, "assigned_to"));
 
         try
         {
@@ -183,29 +157,22 @@ public sealed class AdoWorkItemToolset
         // proceeds and ADO's own validation is the only gate, same as before this feature existed.
         if (!string.IsNullOrEmpty(state))
         {
-            var typeItems = await _adoClient.GetWorkItemsAsync(connection, new[] { idInt }, new[] { AdoFields.WorkItemType }, ct);
-            var workItemType = typeItems.FirstOrDefault()?.WorkItemType;
-
-            if (!string.IsNullOrEmpty(workItemType))
+            var result = await WorkItemStateValidator.ValidateAsync(_adoClient, _stateConfigService, connection, idInt, state, ct);
+            if (result.HasConfig)
             {
-                var validStates = await _stateConfigService.GetEnabledStateNamesAsync(workItemType, ct);
-                if (validStates.Count > 0)
+                if (!result.IsValid)
                 {
-                    var match = validStates.FirstOrDefault(s => string.Equals(s, state, StringComparison.OrdinalIgnoreCase));
-                    if (match is null)
+                    // Not an ADO failure - report it distinctly so the agent offers the valid list
+                    // back to the user instead of treating this like a generic API error.
+                    return JsonSerializer.Serialize(new
                     {
-                        // Not an ADO failure - report it distinctly so the agent offers the valid list
-                        // back to the user instead of treating this like a generic API error.
-                        return JsonSerializer.Serialize(new
-                        {
-                            error = $"'{state}' isn't a valid state for a {workItemType} here.",
-                            workItemType,
-                            validStates,
-                            message = $"Tell the user '{state}' isn't valid for a {workItemType}, list the validStates, and ask which one they'd like - do not call this tool again until they answer."
-                        });
-                    }
-                    state = match;
+                        error = $"'{state}' isn't a valid state for a {result.WorkItemType} here.",
+                        workItemType = result.WorkItemType,
+                        validStates = result.ValidStates,
+                        message = $"Tell the user '{state}' isn't valid for a {result.WorkItemType}, list the validStates, and ask which one they'd like - do not call this tool again until they answer."
+                    });
                 }
+                state = result.NormalizedState;
             }
         }
 
@@ -230,15 +197,8 @@ public sealed class AdoWorkItemToolset
         var state = GetOptionalString(args, "state");
         var workItemType = GetOptionalString(args, "work_item_type");
 
-        var ids = await _adoClient.QueryWiqlAsync(connection, WiqlQueryBuilder.AssignedToMe(state, workItemType), ct);
-
-        if (ids.Count == 0)
-        {
-            return "[]";
-        }
-
-        var items = await _adoClient.GetWorkItemsAsync(connection, ids, WorkItemFieldsWithUrgency, ct);
-        return SerializeItemsWithUrgency(items);
+        var items = await AdoWorkItemQueries.GetAssignedToMeAsync(_adoClient, connection, state, workItemType, sortByUrgency: false, ct);
+        return items.Count == 0 ? "[]" : SerializeItemsWithUrgency(items);
     }
 
     /// <summary>Same data as get_my_work_items, but ranked most-to-least urgent by
@@ -251,16 +211,8 @@ public sealed class AdoWorkItemToolset
         var state = GetOptionalString(args, "state");
         var workItemType = GetOptionalString(args, "work_item_type");
 
-        var ids = await _adoClient.QueryWiqlAsync(connection, WiqlQueryBuilder.AssignedToMe(state, workItemType), ct);
-
-        if (ids.Count == 0)
-        {
-            return "[]";
-        }
-
-        var items = await _adoClient.GetWorkItemsAsync(connection, ids, WorkItemFieldsWithUrgency, ct);
-        var ranked = WorkItemUrgencyRanker.SortByUrgency(items);
-        return SerializeItemsWithUrgency(ranked);
+        var ranked = await AdoWorkItemQueries.GetAssignedToMeAsync(_adoClient, connection, state, workItemType, sortByUrgency: true, ct);
+        return ranked.Count == 0 ? "[]" : SerializeItemsWithUrgency(ranked);
     }
 
     public async Task<string> AttachEvidenceLinkAsync(JsonElement args, CancellationToken ct)
@@ -305,15 +257,6 @@ public sealed class AdoWorkItemToolset
             dueDate = i.DueDate,
             overdue = WorkItemUrgencyRanker.IsOverdue(i)
         }));
-
-    private static void AddOptionalField(List<JsonPatchOperation> ops, JsonElement args, string argName, string field)
-    {
-        var value = GetOptionalString(args, argName);
-        if (!string.IsNullOrEmpty(value))
-        {
-            ops.Add(JsonPatchOperation.Add($"/fields/{field}", value));
-        }
-    }
 
     private static string GetString(JsonElement args, string name) =>
         args.TryGetProperty(name, out var v) ? v.GetString() ?? string.Empty : string.Empty;

@@ -34,7 +34,8 @@ export const routes: Routes = [
     // Same reasoning as reset-password - a user who registered and is already logged in should still
     // be able to open their confirmation link and have it work.
     path: 'confirm-email',
-    loadComponent: () => import('./features/auth/confirm-email/confirm-email').then((m) => m.ConfirmEmail),
+    loadComponent: () =>
+      import('./features/auth/confirm-email/confirm-email').then((m) => m.ConfirmEmail),
   },
   {
     // A route with no `component`, only `children`, is a "layout route": AppShell renders a shared
@@ -77,7 +78,9 @@ export const routes: Routes = [
       {
         path: 'admin/work-item-states',
         loadComponent: () =>
-          import('./features/admin/work-item-states/work-item-states').then((m) => m.WorkItemStates),
+          import('./features/admin/work-item-states/work-item-states').then(
+            (m) => m.WorkItemStates,
+          ),
         canActivate: [adminGuard],
       },
       { path: '', pathMatch: 'full', redirectTo: 'chat' },

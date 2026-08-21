@@ -1,8 +1,6 @@
-using System.Net;
-using System.Text;
 using System.Text.Json.Serialization;
-using System.Threading.RateLimiting;
 using AzureBuddy.Api;
+using AzureBuddy.Api.Extensions;
 using AzureBuddy.Api.Startup;
 using AzureBuddy.Core.Account;
 using AzureBuddy.Core.Agent;
@@ -16,17 +14,11 @@ using AzureBuddy.Core.Routing;
 using AzureBuddy.Core.Settings;
 using AzureBuddy.Core.WorkItemStates;
 using AzureBuddy.Data;
-using AzureBuddy.Data.Entities;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -83,65 +75,8 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
     };
 });
 
-// ---- CORS (Cross-Origin Resource Sharing) ----
-// The browser blocks JS on one origin (e.g. the Angular dev server at http://localhost:4200) from
-// reading responses from a different origin (this API, e.g. http://localhost:5013) unless the server
-// explicitly opts in via CORS headers - a browser security default, not something this app chooses.
-// AllowCredentials is needed because the Angular app sends "Authorization: Bearer <token>" (an
-// Authorization header counts as a credentialed request for CORS purposes even without cookies), and
-// AllowCredentials cannot be combined with AllowAnyOrigin - the origin list must be explicit.
-// Both spellings of the dev server's own address are allowed because either can be what's in the
-// browser's address bar, and the browser sends whichever one it used as the Origin header - a
-// mismatch there is a blocked request, not a fallback. Nothing here depends on which one you use.
-// The localhost fallback is deliberately Development-only: a deployer who forgets to set
-// Cors:AllowedOrigins in a real environment should get a loud startup failure (matching the existing
-// pattern for ConnectionStrings:DefaultConnection and Jwt:SigningKey below), not a CORS policy that
-// silently only allows localhost:4200 and makes the real frontend origin unreachable with no error
-// anywhere except the browser's console.
-var configuredCorsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
-var corsOrigins = configuredCorsOrigins
-    ?? (builder.Environment.IsDevelopment()
-        ? new[] { "http://localhost:4200", "http://127.0.0.1:4200" }
-        : throw new InvalidOperationException(
-            "Missing Cors:AllowedOrigins in configuration. This is required outside Development so the " +
-            "API doesn't silently fall back to allowing only localhost origins."));
-
-builder.Services.AddCors(options =>
-{
-    options.AddDefaultPolicy(policy => policy
-        .WithOrigins(corsOrigins)
-        .AllowAnyHeader()
-        .AllowAnyMethod()
-        .AllowCredentials());
-});
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(options =>
-{
-    options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-    {
-        Name = "Authorization",
-        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT",
-        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Description = "Enter your JWT access token (without the word 'Bearer' - just paste the token itself)"
-    });
-
-    options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
-    {
-        {
-            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-            {
-                Reference = new Microsoft.OpenApi.Models.OpenApiReference
-                {
-                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            Array.Empty<string>()
-        }
-    });
-});
+builder.Services.AddAzureBuddyCors(builder.Configuration, builder.Environment);
+builder.Services.AddAzureBuddySwagger();
 
 // ---- Global exception handling ----
 // Without this, any exception that escapes a controller/service falls through to the framework
@@ -169,115 +104,8 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 34))));
 
-// ---- ASP.NET Core Identity ----
-// AddIdentityCore (not the full AddIdentity) deliberately - the full version also wires up cookie
-// authentication and SignInManager for server-rendered login pages, neither of which this API uses
-// (JWT bearer tokens only, no server-side session state). AddIdentityCore gives us UserManager,
-// password hashing/verification, and lockout tracking without that extra baggage.
-//
-// .AddRoles<IdentityRole>() adds RoleManager and lets UserManager.GetRolesAsync/AddToRoleAsync work -
-// the AspNetRoles/AspNetUserRoles tables already existed in the schema from day one (IdentityDbContext
-// always includes them), they were just unused. This is what makes [Authorize(Roles = "Admin")] on
-// LlmSettingsController mean anything - without it, ASP.NET Core would reject that attribute at
-// startup because nothing would ever populate a role claim to check it against.
-builder.Services.AddIdentityCore<ApplicationUser>()
-    .AddRoles<IdentityRole>()
-    .AddEntityFrameworkStores<AppDbContext>()
-    .AddDefaultTokenProviders();
-
-// Password/lockout policy bound from config instead of hardcoded, so it can be tightened per
-// environment without a code change. See appsettings.json's "Identity" section for the defaults.
-builder.Services.Configure<IdentityOptions>(builder.Configuration.GetSection("Identity"));
-
-// ---- JWT bearer authentication ----
-var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName);
-var jwtSigningKey = jwtSection["SigningKey"]
-    ?? throw new InvalidOperationException("Missing Jwt:SigningKey in configuration.");
-
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = jwtSection["Issuer"],
-            ValidateAudience = true,
-            ValidAudience = jwtSection["Audience"],
-            ValidateLifetime = true,
-            // A small ClockSkew (default is 5 minutes) means an access token can still be accepted
-            // briefly after its stated expiry - fine for most APIs, but worth knowing about if you
-            // ever need "expires exactly on time" guarantees.
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSigningKey))
-        };
-    });
-
-// FallbackPolicy = every endpoint requires an authenticated user UNLESS it explicitly opts out with
-// [AllowAnonymous] (only AuthController does). This is what makes "all existing/new endpoints require
-// auth by default" hold even for anything added later without someone remembering to add [Authorize].
-builder.Services.AddAuthorization(options =>
-{
-    options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
-        .RequireAuthenticatedUser()
-        .Build();
-});
-
-// ---- Forwarded headers (trust the real client IP behind a reverse proxy) ----
-// The rate limiter below partitions by HttpContext.Connection.RemoteIpAddress - behind any reverse
-// proxy/load balancer, that's always the PROXY's own IP unless this middleware rewrites it from the
-// X-Forwarded-For header first. KnownNetworks/KnownProxies are cleared rather than left at their
-// ASP.NET Core defaults (which only trust literal loopback) and rather than defaulting to "trust
-// anything": an unconfigured deployment gets today's behavior (every client is rate-limited together
-// under the proxy's IP - wrong, but not attacker-controlled), and Network:KnownProxies must be set to a
-// deployment's actual reverse-proxy IP(s) before X-Forwarded-For is honored at all. Blindly trusting
-// X-Forwarded-For with no configured proxy would let any client set their own "IP" and either dodge the
-// rate limit or frame another client under it.
-var knownProxies = (builder.Configuration.GetSection("Network:KnownProxies").Get<string[]>() ?? Array.Empty<string>())
-    .Select(proxy => IPAddress.TryParse(proxy, out var proxyIp) ? proxyIp : null)
-    .Where(proxyIp => proxyIp is not null)
-    .ToList();
-builder.Services.Configure<ForwardedHeadersOptions>(options =>
-{
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    options.KnownNetworks.Clear();
-    options.KnownProxies.Clear();
-    foreach (var proxyIp in knownProxies)
-    {
-        options.KnownProxies.Add(proxyIp!);
-    }
-});
-
-// ---- Rate limiting ----
-// Fixed-window limiter on the auth endpoints only, partitioned per client IP via AddPolicy/
-// RateLimitPartition.GetFixedWindowLimiter: 5 requests per minute PER IP. This is a basic
-// brute-force/registration-spam speed bump, not a substitute for account lockout (Identity's lockout
-// policy above already handles "too many wrong passwords for one account").
-//
-// This used to be AddFixedWindowLimiter, which creates exactly ONE limiter shared by every caller
-// regardless of who they are - despite the "per client IP" framing, there was no partitioning at all,
-// so five requests from anyone, anywhere, exhausted the shared budget for every other user until the
-// window reset. AddPolicy with a partition key function is what actually makes each IP get its own
-// independent budget.
-//
-// The "Testing" environment gets an effectively unlimited permit count: WebApplicationFactory-based
-// integration tests all originate from the TestServer's single synthetic client IP, so a real-world
-// per-IP limit of 5/minute trips almost immediately once more than a handful of tests run against the
-// same factory instance - this isn't a workaround for a bug, it's the same limiter correctly doing its
-// job against traffic that (unlike real clients) has no IP diversity. Production behavior is unchanged.
-var authRateLimit = builder.Environment.IsEnvironment("Testing") ? int.MaxValue : 5;
-
-// ChatController's /api/chat makes at least one billed LLM request (and potentially several Azure
-// DevOps API calls) on every call - unlike Auth above, there was previously no rate limit on it at all,
-// which is both a cost-control gap and an abuse-protection gap. Same "Testing" carve-out as Auth: the
-// TestServer's single synthetic client/user would otherwise trip a real-world limit almost immediately
-// once more than a handful of tests exercise the same factory instance.
-var chatRateLimit = builder.Environment.IsEnvironment("Testing") ? int.MaxValue : 20;
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddPolicy(RateLimiterPolicies.Auth, httpContext => AuthRateLimiterPolicy.CreatePartition(httpContext, authRateLimit));
-    options.AddPolicy(RateLimiterPolicies.Chat, httpContext => ChatRateLimiterPolicy.CreatePartition(httpContext, chatRateLimit));
-});
+builder.Services.AddAzureBuddyJwtAuth(builder.Configuration);
+builder.Services.AddAzureBuddyRateLimiting(builder.Configuration, builder.Environment.IsEnvironment("Testing"));
 
 // ---- Data Protection (PAT/API-key encryption key storage) ----
 // By default (and always, when Redis isn't configured), Data Protection keys live under an explicit
@@ -329,42 +157,8 @@ if (redisMultiplexer is not null)
 
 var app = builder.Build();
 
-// ---- Admin role seeding ----
-// There's no in-app "invite an admin" flow (out of scope for this pass) - this is the bootstrapping
-// mechanism instead: ensure the "Admin" role exists, then grant it to any user whose email appears in
-// Admin:Emails (see appsettings.json). Runs on every startup and is idempotent (AddToRoleAsync on a
-// user who already has the role is a safe no-op via Identity's own duplicate check), so redeploying
-// doesn't create duplicate role assignments or throw if the list hasn't changed.
-//
-// A user must already exist for this to do anything - it promotes an existing account, it doesn't
-// create one. The intended flow: register normally through the UI, add that email to Admin:Emails,
-// restart the app once. Runs in its own scope (services registered at Scoped/Transient lifetime, like
-// AppDbContext, aren't available on the root IServiceProvider `app.Services` directly).
-//
-// Wrapped in StartupRetry: without it, MySQL being briefly unreachable at the exact moment this
-// container starts (a common race in orchestrated deployments where the DB and app start together) used
-// to throw straight out of these top-level statements and kill the process before app.Run() ever
-// executed - so even /health/live never came up to report what had gone wrong.
-var startupLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("AzureBuddy.Startup");
-await StartupRetry.RunAsync("Admin role seeding", startupLogger, async cancellationToken =>
-{
-    using var scope = app.Services.CreateScope();
-    await scope.ServiceProvider.GetRequiredService<AdminRoleSeeder>().SeedAsync(cancellationToken);
-}, CancellationToken.None);
-
-// ---- LLM settings: load from database, if an admin has ever saved any ----
-// LlmSettingsProvider (see AzureBuddy.Core/Llm/ILlmSettingsProvider.cs) already seeded itself from
-// appsettings.json's Llm section when DI first constructed it. This overrides that with the database
-// row's values, if one exists - the same "database wins over the config file, once someone has
-// actually saved something" precedence LlmSettingsService.GetAsync uses when deciding what to show an
-// admin. A no-op if no row exists yet (a brand new deployment), leaving the appsettings.json values in
-// effect exactly as before this feature existed.
-await StartupRetry.RunAsync("LLM settings load", startupLogger, async cancellationToken =>
-{
-    using var scope = app.Services.CreateScope();
-    await scope.ServiceProvider.GetRequiredService<AzureBuddy.Core.Llm.LlmSettingsService>()
-        .LoadFromDatabaseIfPresentAsync(cancellationToken);
-}, CancellationToken.None);
+await app.SeedAdminRolesAsync();
+await app.LoadLlmSettingsFromDatabaseAsync();
 
 if (app.Environment.IsDevelopment())
 {
@@ -411,9 +205,9 @@ app.UseRateLimiter();
 
 app.MapControllers();
 
-// AllowAnonymous is required on both: Program.cs's AuthorizationOptions.FallbackPolicy above requires
-// an authenticated user on every endpoint that doesn't opt out, and an orchestrator's health probe never
-// carries a bearer token.
+// AllowAnonymous is required on both: AddAzureBuddyJwtAuth's AuthorizationOptions.FallbackPolicy
+// requires an authenticated user on every endpoint that doesn't opt out, and an orchestrator's health
+// probe never carries a bearer token.
 //
 // /health/live runs no checks (Predicate = _ => false) - it only proves the process is up and the
 // pipeline can complete a request, which is all a liveness probe should ask: failing it tells an

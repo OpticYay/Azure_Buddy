@@ -85,25 +85,12 @@ public sealed class UpdateItemFlow
     private async Task<(string? NormalizedState, string? RejectionMessage)> ValidateStateAsync(
         AdoConnectionContext connection, int id, string requestedState, CancellationToken cancellationToken)
     {
-        var items = await _adoClient.GetWorkItemsAsync(connection, new[] { id }, new[] { AdoFields.WorkItemType }, cancellationToken);
-        var workItemType = items.FirstOrDefault()?.WorkItemType;
-        if (string.IsNullOrEmpty(workItemType))
+        var result = await WorkItemStateValidator.ValidateAsync(_adoClient, _stateConfigService, connection, id, requestedState, cancellationToken);
+        if (!result.HasConfig || result.IsValid)
         {
-            return (null, null);
+            return (result.NormalizedState, null);
         }
 
-        var validStates = await _stateConfigService.GetEnabledStateNamesAsync(workItemType, cancellationToken);
-        if (validStates.Count == 0)
-        {
-            return (null, null);
-        }
-
-        var match = validStates.FirstOrDefault(s => string.Equals(s, requestedState, StringComparison.OrdinalIgnoreCase));
-        if (match is not null)
-        {
-            return (match, null);
-        }
-
-        return (null, $"'{requestedState}' isn't a valid state for a {workItemType} here. Valid states are: {string.Join(", ", validStates)}. Which would you like?");
+        return (null, $"'{requestedState}' isn't a valid state for a {result.WorkItemType} here. Valid states are: {string.Join(", ", result.ValidStates!)}. Which would you like?");
     }
 }

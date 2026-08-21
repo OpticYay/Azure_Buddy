@@ -1,5 +1,6 @@
 import { Pipe, PipeTransform, inject } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { workItemIdCellUrl } from './work-item-id-column';
 
 /** Renders the small subset of markdown the LLM actually writes - **bold**, *italic* or _italic_,
  * `code`, "* "/"- " bullet lists, "#" through "######" headings, and pipe tables - as real HTML
@@ -141,17 +142,12 @@ function renderTable(tableLines: string[], workItemBaseUrl: string | null = null
   const headers = splitRow(tableLines[0]);
   const bodyRows = tableLines.slice(2).map(splitRow);
 
-  // Which column holds work item ids, so its cells can be linked. Matched by header name the same way
-  // message-item.ts's isIdColumn does, rather than assuming column 0 - the agent writes its own header
-  // row and doesn't always put ID first.
-  const idColumn = headers.findIndex((h) => h.trim().toUpperCase() === 'ID');
-
   const head = `<tr>${headers.map((h) => `<th>${renderInline(h)}</th>`).join('')}</tr>`;
   const body = bodyRows
     .map(
       (cells) =>
         `<tr>${cells
-          .map((c, column) => `<td>${renderCell(c, column === idColumn, workItemBaseUrl)}</td>`)
+          .map((c, column) => `<td>${renderCell(c, headers[column] ?? '', workItemBaseUrl)}</td>`)
           .join('')}</tr>`,
     )
     .join('');
@@ -164,17 +160,30 @@ function renderTable(tableLines: string[], workItemBaseUrl: string | null = null
 /** A work item id in the ID column becomes the same linked brass stamp used for structured tables and
  * confirmations, so an id means the same thing and is clickable everywhere it appears. Anything that
  * isn't a bare whole number is left alone - a title that happens to be numeric shouldn't turn into a
- * broken link. The value is already HTML-escaped by the time it gets here, and the digits check means
- * nothing but digits can reach the href. */
-function renderCell(cell: string, isIdColumn: boolean, workItemBaseUrl: string | null): string {
-  const id = cell.trim();
-  if (!isIdColumn || !workItemBaseUrl || !/^\d+$/.test(id)) {
-    return renderInline(cell);
-  }
-  // workItemBaseUrl is NOT LLM output - it comes from the user's own saved ADO organizationUrl setting
-  // (a free-text input) - and unlike the markdown body text, it never passes through the escapeHtml()
-  // call above, so it must be escaped here explicitly before landing inside this href attribute.
-  return `<a class="stamp" href="${escapeAttribute(workItemBaseUrl)}/${id}" target="_blank" rel="noopener">#${id}</a>`;
+ * broken link. The value is already HTML-escaped by the time it gets here, and workItemIdCellUrl's
+ * digits check means nothing but digits can reach the href - but workItemBaseUrl itself is only
+ * digits-checked on the id portion, not escaped, so it's escaped here at the point of splicing into a
+ * raw HTML string (unlike message-item.html's `[href]` property binding, which needs no such escaping
+ * of its own - see workItemIdCellUrl's doc comment for why the escaping lives here and not there). */
+function renderCell(cell: string, header: string, workItemBaseUrl: string | null): string {
+  const url = workItemIdCellUrl(header, cell, workItemBaseUrl);
+  return url
+    ? `<a class="stamp" href="${escapeHtmlAttribute(url)}" target="_blank" rel="noopener">#${cell.trim()}</a>`
+    : renderInline(cell);
+}
+
+/** For values interpolated directly into an HTML attribute (as opposed to escapeHtml, which runs over
+ * the markdown body text) - quotes matter here specifically because they're what let a value break out
+ * of a surrounding href="...". Escapes single quotes too (not just double), even though this pipe
+ * always double-quotes its own href attributes, as defense-in-depth against the string ever being
+ * spliced into a single-quoted context. */
+function escapeHtmlAttribute(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /** Splits "| a | b |" into ["a", "b"] - the leading/trailing pipes produce empty edge entries that
@@ -213,11 +222,4 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-/** For values interpolated directly into an HTML attribute (as opposed to escapeHtml, which runs over
- * the markdown body text) - quotes matter here specifically because they're what let a value break out
- * of a surrounding href="...". */
-function escapeAttribute(value: string): string {
-  return escapeHtml(value);
 }

@@ -3,7 +3,11 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
-import { AdoSettingsView, SaveAdoSettingsRequest, TestConnectionResult } from '../models/settings.models';
+import {
+  AdoSettingsView,
+  SaveAdoSettingsRequest,
+  TestConnectionResult,
+} from '../models/settings.models';
 
 const BASE_URL = `${environment.apiUrl}/api/settings/ado`;
 
