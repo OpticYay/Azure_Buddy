@@ -94,12 +94,18 @@ export class ChatService {
    * to name) a work item in the chat turn that follows. Unlike appendScreenshotMessage above, this never
    * writes a chat message itself and never needs a workItemId up front - see ChatsController's
    * UploadAttachmentAsync and IPendingAttachmentStore. */
-  uploadPendingAttachment(sessionId: string, file: File): Observable<{ fileName: string; contentType: string; size: number }> {
+  uploadPendingAttachment(
+    sessionId: string,
+    file: File,
+  ): Observable<{ fileName: string; contentType: string; size: number }> {
     const formData = new FormData();
     formData.append('file', file, file.name);
 
     return this.http
-      .post<{ fileName: string; contentType: string; size: number }>(`${CHATS_BASE_URL}/${sessionId}/attachments`, formData)
+      .post<{ fileName: string; contentType: string; size: number }>(
+        `${CHATS_BASE_URL}/${sessionId}/attachments`,
+        formData,
+      )
       .pipe(timeout(CHAT_REQUEST_TIMEOUT_MS));
   }
 }

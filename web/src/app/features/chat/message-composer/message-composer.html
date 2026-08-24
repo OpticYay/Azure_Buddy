@@ -5,14 +5,20 @@
            so the preview scales in rather than appearing abruptly. -->
       <div class="attach" [@popIn]>
         @if (file.type.startsWith('image/')) {
-          <img class="attach__thumb" [src]="attachedPreviewUrl()" alt="Attached screenshot preview" />
+          <img
+            class="attach__thumb"
+            [src]="attachedPreviewUrl()"
+            alt="Attached screenshot preview"
+          />
         }
 
         <div class="attach__fields">
           <p class="attach__name">{{ file.name }}</p>
 
           <label class="attach__target">
-            <span class="micro">Attach to work item (optional - leave blank to let Buddy ask/decide)</span>
+            <span class="micro"
+              >Attach to work item (optional - leave blank to let Buddy ask/decide)</span
+            >
             <span class="attach__input">
               <span aria-hidden="true">#</span>
               <!-- `[(ngModel)]="x"` is two-way binding: one property binding plus one event binding

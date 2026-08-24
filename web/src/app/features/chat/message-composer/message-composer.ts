@@ -264,10 +264,14 @@ export class MessageComposer implements OnDestroy {
     this.messageSubmitted.emit(text);
 
     const send$: Observable<ChatResponse> = (
-      sessionId ? of(sessionId) : this.chatService.createSession(null).pipe(map((session) => session.id))
+      sessionId
+        ? of(sessionId)
+        : this.chatService.createSession(null).pipe(map((session) => session.id))
     ).pipe(
       switchMap((id) =>
-        this.chatService.uploadPendingAttachment(id, file).pipe(switchMap(() => this.chatService.sendMessage(id, text))),
+        this.chatService
+          .uploadPendingAttachment(id, file)
+          .pipe(switchMap(() => this.chatService.sendMessage(id, text))),
       ),
     );
 
