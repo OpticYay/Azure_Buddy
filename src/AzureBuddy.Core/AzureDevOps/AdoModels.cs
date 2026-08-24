@@ -14,6 +14,8 @@ public sealed class JsonPatchOperation
     public required object Value { get; init; }
 
     public static JsonPatchOperation Add(string path, object value) => new() { Op = "add", Path = path, Value = value };
+    public static JsonPatchOperation Replace(string path, object value) => new() { Op = "replace", Path = path, Value = value };
+    public static JsonPatchOperation Remove(string path) => new() { Op = "remove", Path = path, Value = string.Empty };
 }
 
 public sealed class WiqlQueryRequest
@@ -42,6 +44,11 @@ public sealed class WorkItem
     [JsonPropertyName("fields")]
     public Dictionary<string, object?> Fields { get; init; } = new();
 
+    /// <summary>Only populated when the request used $expand=all/relations (see IAdoClient.GetWorkItemAsync) -
+    /// null on every batch GetWorkItemsAsync result, which never requests relations.</summary>
+    [JsonPropertyName("relations")]
+    public List<WorkItemRelation>? Relations { get; init; }
+
     public string? Title => GetField("System.Title");
     public string? WorkItemType => GetField("System.WorkItemType");
     public string? State => GetField("System.State");
@@ -65,6 +72,39 @@ public sealed class WorkItem
 
     private string? GetField(string name) =>
         Fields.TryGetValue(name, out var value) ? value?.ToString() : null;
+}
+
+public sealed class WorkItemRelation
+{
+    [JsonPropertyName("rel")]
+    public string Rel { get; init; } = string.Empty;
+
+    [JsonPropertyName("url")]
+    public string Url { get; init; } = string.Empty;
+
+    [JsonPropertyName("attributes")]
+    public WorkItemRelationAttributes? Attributes { get; init; }
+
+    /// <summary>Parses the trailing numeric id off a workItems/{id} relation url, so callers can report
+    /// "linked to #1234" instead of a raw API url. Returns null for relation types that don't point at
+    /// another work item (Hyperlink, AttachedFile).</summary>
+    public static int? TargetWorkItemId(WorkItemRelation relation)
+    {
+        var lastSegment = relation.Url.Split('/').LastOrDefault();
+        return int.TryParse(lastSegment, out var id) ? id : null;
+    }
+}
+
+public sealed class WorkItemRelationAttributes
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
+
+    [JsonPropertyName("comment")]
+    public string? Comment { get; init; }
+
+    [JsonPropertyName("isLocked")]
+    public bool? IsLocked { get; init; }
 }
 
 public sealed class WorkItemsBatchResponse
@@ -113,3 +153,39 @@ public static class AdoFields
     /// whichever one this work item type/process template actually uses.</summary>
     public static readonly string[] DueDateCandidates = { TargetDate, DueDate, FinishDate };
 }
+
+public sealed class IdentitySearchResponse
+{
+    [JsonPropertyName("value")]
+    public List<AdoIdentity> Value { get; init; } = new();
+}
+
+/// <summary>Raw shape of one hit from GET .../_apis/identities?searchFilter=General - reduced by callers
+/// to the smaller ResolvedIdentity record below, which is all the agent/tools actually need.</summary>
+public sealed class AdoIdentity
+{
+    [JsonPropertyName("id")]
+    public string Id { get; init; } = string.Empty;
+
+    [JsonPropertyName("providerDisplayName")]
+    public string ProviderDisplayName { get; init; } = string.Empty;
+
+    [JsonPropertyName("properties")]
+    public AdoIdentityProperties? Properties { get; init; }
+}
+
+public sealed class AdoIdentityProperties
+{
+    [JsonPropertyName("Account")]
+    public AdoIdentityPropertyValue? Account { get; init; }
+}
+
+public sealed class AdoIdentityPropertyValue
+{
+    [JsonPropertyName("$value")]
+    public string? Value { get; init; }
+}
+
+/// <summary>The reduced shape callers actually work with - a display name (for prose/matching) and a
+/// unique name (email/upn - what Azure DevOps actually wants written into System.AssignedTo).</summary>
+public sealed record ResolvedIdentity(string Id, string DisplayName, string UniqueName);

@@ -88,4 +88,18 @@ export class ChatService {
       .post<AppendMessageResult>(`${CHATS_BASE_URL}/${sessionId}/messages`, formData)
       .pipe(timeout(CHAT_REQUEST_TIMEOUT_MS));
   }
+
+  /** Uploads a file into the session's single pending-attachment slot ahead of a normal sendMessage()
+   * call - the agent picks it up via its attach_file_to_work_item tool once the user names (or is asked
+   * to name) a work item in the chat turn that follows. Unlike appendScreenshotMessage above, this never
+   * writes a chat message itself and never needs a workItemId up front - see ChatsController's
+   * UploadAttachmentAsync and IPendingAttachmentStore. */
+  uploadPendingAttachment(sessionId: string, file: File): Observable<{ fileName: string; contentType: string; size: number }> {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+
+    return this.http
+      .post<{ fileName: string; contentType: string; size: number }>(`${CHATS_BASE_URL}/${sessionId}/attachments`, formData)
+      .pipe(timeout(CHAT_REQUEST_TIMEOUT_MS));
+  }
 }

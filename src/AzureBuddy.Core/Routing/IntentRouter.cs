@@ -1,4 +1,5 @@
 using AzureBuddy.Core.Agent;
+using AzureBuddy.Core.Chat;
 using AzureBuddy.Core.Intent;
 using AzureBuddy.Core.Llm.Models;
 using AzureBuddy.Core.Routing.Flows;
@@ -25,6 +26,7 @@ public sealed class IntentRouter
     private readonly GetPrioritizedWorkItemsFlow _getPrioritizedWorkItemsFlow;
     private readonly IConversationalAgent _agent;
     private readonly IChatHistoryStore _historyStore;
+    private readonly IPendingAttachmentStore _pendingAttachmentStore;
 
     public IntentRouter(
         IntentExtractor intentExtractor,
@@ -34,7 +36,8 @@ public sealed class IntentRouter
         MyItemsFlow myItemsFlow,
         GetPrioritizedWorkItemsFlow getPrioritizedWorkItemsFlow,
         IConversationalAgent agent,
-        IChatHistoryStore historyStore)
+        IChatHistoryStore historyStore,
+        IPendingAttachmentStore pendingAttachmentStore)
     {
         _intentExtractor = intentExtractor;
         _createBugFlow = createBugFlow;
@@ -44,11 +47,24 @@ public sealed class IntentRouter
         _getPrioritizedWorkItemsFlow = getPrioritizedWorkItemsFlow;
         _agent = agent;
         _historyStore = historyStore;
+        _pendingAttachmentStore = pendingAttachmentStore;
     }
 
     public async Task<ChatReply> RouteAsync(string sessionId, string userMessage, CancellationToken cancellationToken = default)
     {
-        var extracted = await _intentExtractor.ExtractAsync(userMessage, cancellationToken);
+        // A pending upload means the user's very next message is about deciding what to do with that
+        // file - classifying it as my_items/create_bug/etc by keyword would be a guess at best. Skipping
+        // straight to the agent lets it read the "[Attached file: ...]" notice below and reason about
+        // which work item (if any) the user names in the same message.
+        var pendingAttachment = await _pendingAttachmentStore.GetAsync(sessionId, cancellationToken);
+        if (pendingAttachment is not null)
+        {
+            userMessage = $"{userMessage}\n\n[Attached file: {pendingAttachment.FileName}]";
+        }
+
+        var extracted = pendingAttachment is not null
+            ? ExtractedIntent.Fallback()
+            : await _intentExtractor.ExtractAsync(userMessage, cancellationToken);
 
         // Loaded exactly once per turn, here - above the fork between the deterministic-flow path and
         // the agent path below - because IntentRouter is the only place that sits above both. AddUserTurn

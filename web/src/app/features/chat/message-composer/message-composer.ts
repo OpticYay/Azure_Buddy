@@ -16,6 +16,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Observable, Subscription, map, of, switchMap } from 'rxjs';
 
 import { ChatService } from '../../../core/services/chat.service';
+import { ChatResponse } from '../../../core/models/chat.models';
 import { ChatActivityService } from '../../../core/services/chat-activity.service';
 import { DRAFT_SESSION_KEY, NewChatService } from '../../../core/services/new-chat.service';
 import { extractApiErrorMessage } from '../../../core/models/api-error.model';
@@ -230,10 +231,65 @@ export class MessageComposer implements OnDestroy {
   send(): void {
     const file = this.attachedFile();
     if (file) {
-      this.sendScreenshot(file);
+      // A filled-in work item id keeps using the original, ADO-specific screenshot path below. Leaving
+      // it blank means the user wants the agent itself to figure out (or ask) where the file goes -
+      // that's the new pending-attachment path, which works for any file type, not just images.
+      if (this.workItemIdText().trim()) {
+        this.sendScreenshot(file);
+      } else {
+        this.sendFileViaAgent(file);
+      }
     } else {
       this.sendText();
     }
+  }
+
+  /** Uploads the attached file into the session's pending-attachment slot, then sends a normal chat
+   * turn - IntentRouter sees the pending upload and routes straight to the agent, whose
+   * attach_file_to_work_item tool picks the file back up once the user names (or is asked to name) a
+   * work item. Mirrors sendText()'s optimistic-UI handling (messageSubmitted/messageFailed) rather than
+   * sendScreenshot()'s, since from the chat log's perspective this IS just a text turn - the attachment
+   * itself never renders as its own message bubble the way a linked screenshot does. */
+  private sendFileViaAgent(file: File): void {
+    if (this.sending()) {
+      return;
+    }
+
+    const sessionId = this.sessionId();
+    const activityKey = sessionId ?? DRAFT_SESSION_KEY;
+    this.errorMessage.set(null);
+
+    const text = this.messageText().trim() || `I've attached ${file.name}.`;
+    this.messageText.set('');
+    this.messageSubmitted.emit(text);
+
+    const send$: Observable<ChatResponse> = (
+      sessionId ? of(sessionId) : this.chatService.createSession(null).pipe(map((session) => session.id))
+    ).pipe(
+      switchMap((id) =>
+        this.chatService.uploadPendingAttachment(id, file).pipe(switchMap(() => this.chatService.sendMessage(id, text))),
+      ),
+    );
+
+    this.inFlightSubscription = this.chatActivity.track(activityKey, send$).subscribe({
+      next: (response) => {
+        this.inFlightSubscription = null;
+        this.removeAttachment();
+        if (sessionId) {
+          this.messageSent.emit(sessionId);
+        } else {
+          this.sessionCreated.emit(response.sessionId);
+        }
+        this.focusField();
+      },
+      error: () => {
+        this.inFlightSubscription = null;
+        this.messageText.set(text);
+        this.messageFailed.emit();
+        this.errorMessage.set('Could not send that file. Please try again.');
+        this.focusField();
+      },
+    });
   }
 
   /** Drops a starter phrase into the box and puts the cursor at the end, ready to finish. Called by

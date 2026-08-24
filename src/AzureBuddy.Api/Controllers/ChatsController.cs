@@ -24,15 +24,18 @@ public sealed class ChatsController : ControllerBase
     private readonly ChatSessionService _chatSessionService;
     private readonly UserAdoConfigService _adoConfigService;
     private readonly AdoConnectionContextAccessor _connectionAccessor;
+    private readonly IPendingAttachmentStore _pendingAttachmentStore;
 
     public ChatsController(
         ChatSessionService chatSessionService,
         UserAdoConfigService adoConfigService,
-        AdoConnectionContextAccessor connectionAccessor)
+        AdoConnectionContextAccessor connectionAccessor,
+        IPendingAttachmentStore pendingAttachmentStore)
     {
         _chatSessionService = chatSessionService;
         _adoConfigService = adoConfigService;
         _connectionAccessor = connectionAccessor;
+        _pendingAttachmentStore = pendingAttachmentStore;
     }
 
     [HttpGet]
@@ -178,6 +181,44 @@ public sealed class ChatsController : ControllerBase
         // (per the "surface a clear error rather than silently dropping it" requirement), not an HTTP
         // error, since from the client's perspective the *request* succeeded (a message was recorded).
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Uploads a file into a chat session's single pending-attachment slot, for the conversational agent's
+    /// attach_file_to_work_item tool to pick up on a later turn - unlike the screenshot path above, this
+    /// doesn't require (or accept) a workItemId: the agent decides which item to attach it to, based on
+    /// what the user says in chat. Returns only metadata - the bytes go straight into
+    /// IPendingAttachmentStore, not back to the caller.
+    /// </summary>
+    [HttpPost("{sessionId:guid}/attachments")]
+    [RequestSizeLimit(MaxScreenshotBytes)]
+    public async Task<IActionResult> UploadAttachmentAsync(Guid sessionId, IFormFile file, CancellationToken cancellationToken)
+    {
+        var userId = User.GetRequiredUserId();
+
+        var session = await _chatSessionService.GetSessionAsync(userId, sessionId, cancellationToken);
+        if (session is null)
+        {
+            return SessionNotFound();
+        }
+
+        if (file.Length == 0 || file.Length > MaxScreenshotBytes)
+        {
+            return BadRequest(new ApiErrorResponse(new ApiError(
+                "invalid_file_size",
+                $"File must be between 1 byte and {MaxScreenshotBytes / (1024 * 1024)} MB.",
+                "file")));
+        }
+
+        using var memoryStream = new MemoryStream();
+        await file.CopyToAsync(memoryStream, cancellationToken);
+
+        await _pendingAttachmentStore.SetAsync(
+            sessionId.ToString(),
+            new PendingAttachment(file.FileName, file.ContentType, memoryStream.ToArray(), DateTime.UtcNow),
+            cancellationToken);
+
+        return Ok(new { fileName = file.FileName, contentType = file.ContentType, size = file.Length });
     }
 
     /// <summary>Every "session/message not found" case above shares this one shape (rather than a

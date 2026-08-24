@@ -1,11 +1,14 @@
 using System.Text.Json;
 using AzureBuddy.Core.Agent;
 using AzureBuddy.Core.AzureDevOps;
+using AzureBuddy.Core.Chat;
 using AzureBuddy.Core.WorkItemStates;
 using AzureBuddy.Data;
 using AzureBuddy.Tests.Integration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace AzureBuddy.Tests.Agent;
@@ -17,17 +20,27 @@ public class ToolCatalogTests
         var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         var stateConfigService = new WorkItemStateConfigService(new AppDbContext(options), new MemoryCache(new MemoryCacheOptions()));
         var connectionAccessor = new AdoConnectionContextAccessor { Current = new AdoConnectionContext("https://dev.azure.com/org", "Proj", "pat") };
-        return new ToolCatalog(new AdoWorkItemToolset(new FakeAdoClient(), connectionAccessor, stateConfigService));
+        var adoClient = new FakeAdoClient();
+        return new ToolCatalog(new AdoWorkItemToolset(
+            adoClient,
+            connectionAccessor,
+            stateConfigService,
+            new AdoIdentityResolver(adoClient),
+            new InMemoryPendingAttachmentStore(Options.Create(new AdoOptions())),
+            new ChatSessionContextAccessor(),
+            new AdoAttachmentService(adoClient, NullLogger<AdoAttachmentService>.Instance)));
     }
 
     private static readonly string[] ExpectedToolNames =
     {
         "search_work_items", "create_linked_bug", "get_linked_items", "get_work_item_details",
-        "update_work_item", "get_my_work_items", "get_prioritized_work_items", "attach_evidence_link"
+        "update_work_item", "get_my_work_items", "get_prioritized_work_items", "attach_evidence_link",
+        "query_work_items", "resolve_identity", "get_work_item_full", "update_work_item_fields",
+        "link_work_items", "attach_file_to_work_item"
     };
 
     [Fact]
-    public void GetTools_RegistersExactlyTheEightExpectedTools()
+    public void GetTools_RegistersExactlyTheExpectedTools()
     {
         var tools = NewToolCatalog().GetTools();
 

@@ -75,6 +75,30 @@ public sealed class AzureBuddyAgent : IConversationalAgent
         1. Use this whenever the user asks what to prioritize, what's most urgent, or what to work on first/next - NOT Scenario D, which is for a plain list with no ranking implied.
         2. `get_prioritized_work_items`: Optionally pass `state` if the user names one, and `work_item_type` the same way Scenario D does when the user named a specific type. The result is already sorted most-to-least urgent - do not re-sort it.
         3. Output: start with a one-sentence summary (e.g. "You have 2 overdue items and 3 due this week"), then a markdown table (ID | Title | Type | State | Priority | Start Date | Due Date) in the exact order returned.
+
+        Scenario F: Open-Ended / Natural-Language Queries
+        1. Use `query_work_items` whenever the user's question doesn't fit any tool above - filtering by arbitrary fields, dates, combinations of criteria, or anything phrased as a general question about work items rather than one of the specific scenarios (e.g. "bugs created last week", "active tasks in Mobile area with no assignee"). Pass only a WIQL filter condition as `where_clause` - never SELECT/FROM/ORDER BY, and never try to author the project scope yourself.
+        2. If the user named a person (assigned to, created by, etc), resolve their identity with `resolve_identity` first and use its `uniqueName` in the filter rather than the raw name they typed.
+        3. Output the results as a markdown table (ID | Title | Type | State). If `found: 0`, say the query ran successfully and found nothing - never invent a result.
+
+        Scenario G: Full Work Item Detail / Relationships
+        1. Use `get_work_item_full` whenever the user asks about a work item's links, relations, parent/children, attachments, or any field not covered by `get_work_item_details`. Requires a verified numerical id - resolve one with `search_work_items` first if the user named the item.
+        2. Report relations by their target work item id and link type (e.g. "linked as parent to #1234"); do not fabricate a relation that isn't present in the response.
+
+        Scenario H: Arbitrary Field Updates
+        1. Use `update_work_item_fields` when the user wants to change a field `update_work_item` doesn't cover (anything other than state/comment), e.g. title, area path, iteration path, priority, or a custom field. Requires a verified numerical id.
+        2. If setting `System.AssignedTo`, call `resolve_identity` first and pass its `uniqueName`, not the raw name the user gave.
+        3. If the response contains a `validStates` list, treat it exactly like Scenario C step 3 - relay it and stop.
+        4. Confirm exactly which fields were changed and to what value.
+
+        Scenario I: Linking Work Items
+        1. Use `link_work_items` when the user wants to connect two EXISTING work items (parent, child, related, predecessor, successor, duplicate). Resolve both ids first via `search_work_items` if named rather than given numerically - NEVER hallucinate either id.
+        2. Confirm which two ids were linked and as what link type.
+
+        Scenario J: Attaching an Uploaded File
+        1. Use `attach_file_to_work_item` when the user has uploaded a file into this conversation (not given a URL - use `attach_evidence_link` for a URL) and wants it attached to a work item. Requires a verified numerical id; resolve one first if the user named the item instead.
+        2. If the tool reports no file was uploaded, tell the user to attach one first - do not retry blindly.
+        3. Confirm the file name and the id it was attached to.
         """;
 
     private readonly IChatCompletionClient _chatClient;

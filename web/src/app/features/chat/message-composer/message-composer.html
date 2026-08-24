@@ -4,13 +4,15 @@
       <!-- [@popIn] plays as this block enters the DOM - i.e. the moment a screenshot is attached -
            so the preview scales in rather than appearing abruptly. -->
       <div class="attach" [@popIn]>
-        <img class="attach__thumb" [src]="attachedPreviewUrl()" alt="Attached screenshot preview" />
+        @if (file.type.startsWith('image/')) {
+          <img class="attach__thumb" [src]="attachedPreviewUrl()" alt="Attached screenshot preview" />
+        }
 
         <div class="attach__fields">
           <p class="attach__name">{{ file.name }}</p>
 
           <label class="attach__target">
-            <span class="micro">Attach to work item</span>
+            <span class="micro">Attach to work item (optional - leave blank to let Buddy ask/decide)</span>
             <span class="attach__input">
               <span aria-hidden="true">#</span>
               <!-- `[(ngModel)]="x"` is two-way binding: one property binding plus one event binding
@@ -56,7 +58,7 @@
           />
         </svg>
         <span class="sr-only">Attach a screenshot</span>
-        <input type="file" accept="image/*" (change)="onFileSelected($event)" hidden />
+        <input type="file" (change)="onFileSelected($event)" hidden />
       </label>
 
       <textarea

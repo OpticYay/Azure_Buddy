@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using AzureBuddy.Core.AzureDevOps;
+using AzureBuddy.Core.Chat;
 using AzureBuddy.Core.Common;
 using AzureBuddy.Core.WorkItemStates;
 
@@ -19,15 +20,38 @@ namespace AzureBuddy.Core.Agent;
 /// </summary>
 public sealed class AdoWorkItemToolset
 {
+    /// <summary>Fields update_work_item_fields must never touch - identity/system bookkeeping that
+    /// either Azure DevOps computes itself (Id, Rev) or that would move the item out of the context this
+    /// tool operates in (TeamProject, WorkItemType).</summary>
+    private static readonly HashSet<string> ImmutableFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "System.Id", "System.Rev", "System.TeamProject", "System.WorkItemType"
+    };
+
     private readonly IAdoClient _adoClient;
     private readonly AdoConnectionContextAccessor _connectionAccessor;
     private readonly WorkItemStateConfigService _stateConfigService;
+    private readonly AdoIdentityResolver _identityResolver;
+    private readonly IPendingAttachmentStore _pendingAttachmentStore;
+    private readonly ChatSessionContextAccessor _sessionAccessor;
+    private readonly IAdoAttachmentService _attachmentService;
 
-    public AdoWorkItemToolset(IAdoClient adoClient, AdoConnectionContextAccessor connectionAccessor, WorkItemStateConfigService stateConfigService)
+    public AdoWorkItemToolset(
+        IAdoClient adoClient,
+        AdoConnectionContextAccessor connectionAccessor,
+        WorkItemStateConfigService stateConfigService,
+        AdoIdentityResolver identityResolver,
+        IPendingAttachmentStore pendingAttachmentStore,
+        ChatSessionContextAccessor sessionAccessor,
+        IAdoAttachmentService attachmentService)
     {
         _adoClient = adoClient;
         _connectionAccessor = connectionAccessor;
         _stateConfigService = stateConfigService;
+        _identityResolver = identityResolver;
+        _pendingAttachmentStore = pendingAttachmentStore;
+        _sessionAccessor = sessionAccessor;
+        _attachmentService = attachmentService;
     }
 
     public async Task<string> SearchWorkItemsAsync(JsonElement args, CancellationToken ct)
@@ -235,6 +259,270 @@ public sealed class AdoWorkItemToolset
         {
             var updated = await _adoClient.UpdateWorkItemAsync(connection, idInt, ops, ct);
             return JsonSerializer.Serialize(new { id = updated.Id });
+        }
+        catch (AdoApiException ex)
+        {
+            return JsonSerializer.Serialize(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Runs a model-authored WIQL WHERE-clause fragment, always composed inside a
+    /// server-controlled SELECT/FROM/project-scope/ORDER BY - see WiqlFragmentCompiler for why the model
+    /// is never allowed to author the whole query.</summary>
+    public async Task<string> QueryWorkItemsAsync(JsonElement args, CancellationToken ct)
+    {
+        var connection = _connectionAccessor.Require();
+        var fragment = GetString(args, "where_clause");
+
+        var compiled = WiqlFragmentCompiler.Compile(fragment);
+        if (!compiled.Success)
+        {
+            return JsonSerializer.Serialize(new { error = compiled.Error });
+        }
+
+        try
+        {
+            var ids = await _adoClient.QueryWiqlAsync(connection, compiled.Query!, ct);
+            if (ids.Count == 0)
+            {
+                return JsonSerializer.Serialize(new { found = 0, message = "The query succeeded but matched no work items." });
+            }
+
+            var limited = ids.Take(200).ToList();
+            var items = await _adoClient.GetWorkItemsAsync(connection, limited, new[] { AdoFields.Title, AdoFields.WorkItemType, AdoFields.State }, ct);
+            return SerializeItems(items);
+        }
+        catch (AdoApiException ex)
+        {
+            return JsonSerializer.Serialize(new { error = $"The Azure DevOps query failed: {ex.Message}" });
+        }
+    }
+
+    /// <summary>Turns a person's name/email into the exact identity Azure DevOps needs written into
+    /// fields like AssignedTo - see AdoIdentityResolver for the search/WIQL-fallback/scoring
+    /// details.</summary>
+    public async Task<string> ResolveIdentityAsync(JsonElement args, CancellationToken ct)
+    {
+        var connection = _connectionAccessor.Require();
+        var name = GetString(args, "name");
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return JsonSerializer.Serialize(new { error = "No name provided to resolve." });
+        }
+
+        try
+        {
+            var resolution = await _identityResolver.ResolveAsync(connection, name, ct);
+            if (resolution.Resolved)
+            {
+                var identity = resolution.Identity!;
+                return JsonSerializer.Serialize(new { resolved = true, uniqueName = identity.UniqueName, displayName = identity.DisplayName });
+            }
+
+            if (resolution.Candidates.Count == 0)
+            {
+                return JsonSerializer.Serialize(new { resolved = false, message = $"No identity matching '{name}' was found. Ask the user to confirm the name or provide an email." });
+            }
+
+            return JsonSerializer.Serialize(new
+            {
+                resolved = false,
+                candidates = resolution.Candidates.Select(c => new { c.Identity.DisplayName, c.Identity.UniqueName, c.Score }),
+                message = "More than one identity could match - ask the user which one they mean before proceeding."
+            });
+        }
+        catch (AdoApiException ex)
+        {
+            return JsonSerializer.Serialize(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Full read of a single work item, including its relations - the only tool that returns
+    /// links, since get_work_item_details deliberately doesn't (see that method's field list).</summary>
+    public async Task<string> GetWorkItemFullAsync(JsonElement args, CancellationToken ct)
+    {
+        var connection = _connectionAccessor.Require();
+        var id = TextUtils.DigitsOnly(GetString(args, "id"));
+
+        if (!int.TryParse(id, out var idInt))
+        {
+            return JsonSerializer.Serialize(new { error = "No valid numerical id provided." });
+        }
+
+        try
+        {
+            var item = await _adoClient.GetWorkItemAsync(connection, idInt, ct);
+            if (item is null)
+            {
+                return JsonSerializer.Serialize(new { error = $"Work item {idInt} was not found." });
+            }
+
+            return JsonSerializer.Serialize(new
+            {
+                id = item.Id,
+                fields = item.Fields,
+                relations = item.Relations?.Select(r => new
+                {
+                    rel = r.Rel,
+                    url = r.Url,
+                    targetWorkItemId = WorkItemRelation.TargetWorkItemId(r),
+                    comment = r.Attributes?.Comment
+                })
+            });
+        }
+        catch (AdoApiException ex)
+        {
+            return JsonSerializer.Serialize(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Sets arbitrary work item fields by their ADO reference name (e.g. System.Title,
+    /// Custom.MyField) - unlike update_work_item, which only knows about state/comment. Field names are
+    /// allowlisted (System.*/Microsoft.VSTS.*/Custom.*) and immutable identity fields are rejected
+    /// outright; System.State is still routed through WorkItemStateValidator so this can't bypass the
+    /// admin-configured valid-states check update_work_item already enforces.</summary>
+    public async Task<string> UpdateWorkItemFieldsAsync(JsonElement args, CancellationToken ct)
+    {
+        var connection = _connectionAccessor.Require();
+        var id = TextUtils.DigitsOnly(GetString(args, "id"));
+
+        if (!int.TryParse(id, out var idInt))
+        {
+            return JsonSerializer.Serialize(new { error = "No valid numerical id provided." });
+        }
+
+        if (!args.TryGetProperty("fields", out var fieldsElement) || fieldsElement.ValueKind != JsonValueKind.Object)
+        {
+            return JsonSerializer.Serialize(new { error = "No 'fields' object provided - pass an object mapping ADO field reference names to their new values." });
+        }
+
+        var ops = new List<JsonPatchOperation>();
+        foreach (var property in fieldsElement.EnumerateObject())
+        {
+            var fieldName = property.Name;
+
+            if (ImmutableFields.Contains(fieldName))
+            {
+                return JsonSerializer.Serialize(new { error = $"'{fieldName}' cannot be changed - it is a system-managed field." });
+            }
+
+            if (!Regex.IsMatch(fieldName, @"^(System|Microsoft\.VSTS\.[A-Za-z]+|Custom)\.[A-Za-z0-9_.]+$"))
+            {
+                return JsonSerializer.Serialize(new { error = $"'{fieldName}' is not a recognized Azure DevOps field reference name." });
+            }
+
+            var value = property.Value.ValueKind == JsonValueKind.String ? property.Value.GetString() : property.Value.GetRawText();
+
+            if (string.Equals(fieldName, AdoFields.State, StringComparison.OrdinalIgnoreCase) && value is not null)
+            {
+                var result = await WorkItemStateValidator.ValidateAsync(_adoClient, _stateConfigService, connection, idInt, value, ct);
+                if (result.HasConfig)
+                {
+                    if (!result.IsValid)
+                    {
+                        return JsonSerializer.Serialize(new
+                        {
+                            error = $"'{value}' isn't a valid state for a {result.WorkItemType} here.",
+                            workItemType = result.WorkItemType,
+                            validStates = result.ValidStates,
+                            message = $"Tell the user '{value}' isn't valid for a {result.WorkItemType}, list the validStates, and ask which one they'd like - do not call this tool again until they answer."
+                        });
+                    }
+                    value = result.NormalizedState;
+                }
+            }
+
+            ops.Add(JsonPatchOperation.Add($"/fields/{fieldName}", value ?? string.Empty));
+        }
+
+        if (ops.Count == 0)
+        {
+            return JsonSerializer.Serialize(new { error = "No fields provided to update." });
+        }
+
+        try
+        {
+            var updated = await _adoClient.UpdateWorkItemAsync(connection, idInt, ops, ct);
+            return JsonSerializer.Serialize(new { id = updated.Id, fields = updated.Fields });
+        }
+        catch (AdoApiException ex)
+        {
+            return JsonSerializer.Serialize(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Creates a link between two existing work items using one of AdoRelationOps'
+    /// allowlisted friendly link-type names - unlike CreateLinkedBugAsync's ParentLink, this works on
+    /// two already-existing items and supports every link type the allowlist covers.</summary>
+    public async Task<string> LinkWorkItemsAsync(JsonElement args, CancellationToken ct)
+    {
+        var connection = _connectionAccessor.Require();
+        var sourceId = TextUtils.DigitsOnly(GetString(args, "source_id"));
+        var targetId = TextUtils.DigitsOnly(GetString(args, "target_id"));
+        var linkType = GetString(args, "link_type");
+        var comment = GetOptionalString(args, "comment");
+
+        if (!int.TryParse(sourceId, out var sourceIdInt) || !int.TryParse(targetId, out var targetIdInt))
+        {
+            return JsonSerializer.Serialize(new { error = "Both source_id and target_id must be valid numerical ids." });
+        }
+
+        if (!AdoRelationOps.LinkTypesByFriendlyName.TryGetValue(linkType, out var rel))
+        {
+            return JsonSerializer.Serialize(new
+            {
+                error = $"'{linkType}' is not a supported link type.",
+                supportedLinkTypes = AdoRelationOps.LinkTypesByFriendlyName.Keys
+            });
+        }
+
+        var targetUrl = BugCreationRequestBuilder.ParentWorkItemUrl(connection, targetIdInt.ToString());
+        var ops = new List<JsonPatchOperation> { AdoRelationOps.WorkItemLink(rel, targetUrl, comment) };
+
+        try
+        {
+            var updated = await _adoClient.UpdateWorkItemAsync(connection, sourceIdInt, ops, ct);
+            return JsonSerializer.Serialize(new { id = updated.Id, linked = targetIdInt, linkType });
+        }
+        catch (AdoApiException ex)
+        {
+            return JsonSerializer.Serialize(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Attaches whatever file the user most recently uploaded through the chat composer (held in
+    /// IPendingAttachmentStore, keyed by the current session) to the given work item, then clears the
+    /// pending slot - this is the only tool that reaches into session state rather than its own
+    /// arguments, since the model never sees the raw file bytes.</summary>
+    public async Task<string> AttachFileToWorkItemAsync(JsonElement args, CancellationToken ct)
+    {
+        var connection = _connectionAccessor.Require();
+        var id = TextUtils.DigitsOnly(GetString(args, "id"));
+        var comment = GetOptionalString(args, "comment") ?? "File attached via chat";
+
+        if (!int.TryParse(id, out var idInt))
+        {
+            return JsonSerializer.Serialize(new { error = "No valid numerical id provided." });
+        }
+
+        var sessionId = _sessionAccessor.SessionId;
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            return JsonSerializer.Serialize(new { error = "No active chat session to look up an attachment for." });
+        }
+
+        var pending = await _pendingAttachmentStore.GetAsync(sessionId, ct);
+        if (pending is null)
+        {
+            return JsonSerializer.Serialize(new { error = "No file has been uploaded in this conversation yet. Ask the user to attach one first." });
+        }
+
+        try
+        {
+            var attachmentUrl = await _attachmentService.AttachFileAsync(connection, idInt, pending.FileName, pending.Content, pending.ContentType, comment, ct);
+            await _pendingAttachmentStore.RemoveAsync(sessionId, ct);
+            return JsonSerializer.Serialize(new { id = idInt, fileName = pending.FileName, attachmentUrl });
         }
         catch (AdoApiException ex)
         {

@@ -15,6 +15,31 @@ public static class AdoRelationOps
         public const string AttachedFile = "AttachedFile";
     }
 
+    /// <summary>Friendly link-type names the agent's link_work_items tool accepts, mapped to the actual
+    /// ADO "rel" value. An allowlist rather than passing the model's own rel string straight through -
+    /// the full set of ADO relation type names includes non-hierarchical/internal ones (e.g. "Tests",
+    /// remote-work-item links) this app has no reason to expose yet.</summary>
+    public static readonly IReadOnlyDictionary<string, string> LinkTypesByFriendlyName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["parent"] = "System.LinkTypes.Hierarchy-Reverse",
+        ["child"] = "System.LinkTypes.Hierarchy-Forward",
+        ["related"] = "System.LinkTypes.Related",
+        ["predecessor"] = "System.LinkTypes.Dependency-Reverse",
+        ["successor"] = "System.LinkTypes.Dependency-Forward",
+        ["duplicate"] = "System.LinkTypes.Duplicate-Forward",
+    };
+
+    /// <summary>Generic work-item-to-work-item link, used by the link_work_items tool for every relation
+    /// type in LinkTypesByFriendlyName above. The three existing helpers below stay separate (they have
+    /// their own tests/callers and aren't work-item-to-work-item links).</summary>
+    public static JsonPatchOperation WorkItemLink(string rel, string targetWorkItemUrl, string? comment) =>
+        JsonPatchOperation.Add("/relations/-", new
+        {
+            rel,
+            url = targetWorkItemUrl,
+            attributes = string.IsNullOrEmpty(comment) ? null : new { comment }
+        });
+
     /// <summary>Links a new work item to its parent (used when creating a bug under a User Story/Task).</summary>
     public static JsonPatchOperation ParentLink(string parentWorkItemUrl) =>
         JsonPatchOperation.Add("/relations/-", new

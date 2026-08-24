@@ -1,12 +1,15 @@
 using System.Text.Json;
 using AzureBuddy.Core.Agent;
 using AzureBuddy.Core.AzureDevOps;
+using AzureBuddy.Core.Chat;
 using AzureBuddy.Core.WorkItemStates;
 using AzureBuddy.Data;
 using AzureBuddy.Data.Entities;
 using AzureBuddy.Tests.Integration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace AzureBuddy.Tests.Agent;
@@ -26,7 +29,14 @@ public class AdoWorkItemToolsetTests
     };
 
     private static AdoWorkItemToolset NewToolset(FakeAdoClient adoClient, AppDbContext? dbContext = null) =>
-        new(adoClient, NewConnectionAccessor(), new WorkItemStateConfigService(dbContext ?? NewDbContext(), new MemoryCache(new MemoryCacheOptions())));
+        new(
+            adoClient,
+            NewConnectionAccessor(),
+            new WorkItemStateConfigService(dbContext ?? NewDbContext(), new MemoryCache(new MemoryCacheOptions())),
+            new AdoIdentityResolver(adoClient),
+            new InMemoryPendingAttachmentStore(Options.Create(new AdoOptions())),
+            new ChatSessionContextAccessor(),
+            new AdoAttachmentService(adoClient, NullLogger<AdoAttachmentService>.Instance));
 
     private static JsonElement Args(object obj) => JsonDocument.Parse(JsonSerializer.Serialize(obj)).RootElement;
 

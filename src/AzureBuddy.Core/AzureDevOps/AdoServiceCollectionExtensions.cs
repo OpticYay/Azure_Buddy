@@ -22,6 +22,7 @@ public static class AdoServiceCollectionExtensions
         services.AddScoped<AdoConnectionContextAccessor>();
 
         services.AddScoped<IAdoAttachmentService, AdoAttachmentService>();
+        services.AddScoped<AdoIdentityResolver>();
 
         return services;
     }

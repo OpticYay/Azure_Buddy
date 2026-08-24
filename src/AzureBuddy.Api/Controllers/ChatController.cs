@@ -46,17 +46,20 @@ public sealed class ChatController : ControllerBase
     private readonly ChatSessionService _chatSessionService;
     private readonly UserAdoConfigService _adoConfigService;
     private readonly AdoConnectionContextAccessor _connectionAccessor;
+    private readonly ChatSessionContextAccessor _sessionAccessor;
 
     public ChatController(
         IntentRouter intentRouter,
         ChatSessionService chatSessionService,
         UserAdoConfigService adoConfigService,
-        AdoConnectionContextAccessor connectionAccessor)
+        AdoConnectionContextAccessor connectionAccessor,
+        ChatSessionContextAccessor sessionAccessor)
     {
         _intentRouter = intentRouter;
         _chatSessionService = chatSessionService;
         _adoConfigService = adoConfigService;
         _connectionAccessor = connectionAccessor;
+        _sessionAccessor = sessionAccessor;
     }
 
     // [Required] on ChatRequest.Message (validated automatically by [ApiController]) covers both null
@@ -83,6 +86,7 @@ public sealed class ChatController : ControllerBase
         }
 
         session ??= await _chatSessionService.CreateSessionAsync(userId, title: null, cancellationToken);
+        _sessionAccessor.SessionId = session.Id.ToString();
 
         await _chatSessionService.AppendMessageAsync(
             userId, session.Id, ChatMessageRole.User, request.Message, workItemId: null, cancellationToken: cancellationToken);

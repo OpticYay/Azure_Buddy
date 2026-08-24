@@ -1,5 +1,6 @@
 using AzureBuddy.Core.Agent;
 using AzureBuddy.Core.AzureDevOps;
+using AzureBuddy.Core.Chat;
 using AzureBuddy.Core.Llm;
 using AzureBuddy.Core.Llm.Models;
 using AzureBuddy.Core.WorkItemStates;
@@ -8,6 +9,7 @@ using AzureBuddy.Tests.Integration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace AzureBuddy.Tests.Agent;
@@ -65,7 +67,14 @@ public class AzureBuddyAgentTests
         };
         var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         var stateConfigService = new WorkItemStateConfigService(new AppDbContext(options), new MemoryCache(new MemoryCacheOptions()));
-        return new ToolCatalog(new AdoWorkItemToolset(adoClient, connectionAccessor, stateConfigService));
+        return new ToolCatalog(new AdoWorkItemToolset(
+            adoClient,
+            connectionAccessor,
+            stateConfigService,
+            new AdoIdentityResolver(adoClient),
+            new InMemoryPendingAttachmentStore(Options.Create(new AdoOptions())),
+            new ChatSessionContextAccessor(),
+            new AdoAttachmentService(adoClient, NullLogger<AdoAttachmentService>.Instance)));
     }
 
     [Fact]

@@ -19,4 +19,19 @@ public interface IAdoAttachmentService
         string fileName,
         byte[] content,
         CancellationToken cancellationToken = default);
+
+    /// <summary>General-purpose version of AttachScreenshotAsync: uploads any file type and links it to
+    /// the work item, embedding an &lt;img&gt; only when contentType is actually an image - every other
+    /// type gets an HTML-encoded &lt;a href&gt; link instead, both in the description/ReproSteps embed
+    /// and the history comment. AttachScreenshotAsync existed first and only ever handled images
+    /// (inferring an &lt;img&gt; tag unconditionally); this is what the conversational
+    /// attach_file_to_work_item tool calls for arbitrary chat uploads.</summary>
+    Task<string> AttachFileAsync(
+        AdoConnectionContext connection,
+        int workItemId,
+        string fileName,
+        byte[] content,
+        string contentType,
+        string comment,
+        CancellationToken cancellationToken = default);
 }
