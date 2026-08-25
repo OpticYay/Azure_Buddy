@@ -108,7 +108,11 @@ public sealed class GeminiChatClient : IChatCompletionClient
         {
             ChatRole.User => "user",
             ChatRole.Assistant => "model",
-            ChatRole.Tool => "function",
+            // Gemini's generateContent API has no "function" role - it rejects it outright
+            // ("Role 'function' is not supported... valid role: ... MODEL, USER"). A functionResponse
+            // part travels inside a "user" role content instead, same as a functionCall part travels
+            // inside "model".
+            ChatRole.Tool => "user",
             _ => "user"
         };
 
@@ -136,13 +140,15 @@ public sealed class GeminiChatClient : IChatCompletionClient
             return new
             {
                 role,
-                parts = message.ToolCalls.Select(tc => new
+                parts = message.ToolCalls.Select(tc =>
                 {
-                    functionCall = new
-                    {
-                        name = tc.Name,
-                        args = JsonSerializer.Deserialize<JsonElement>(tc.ArgumentsJson)
-                    }
+                    var functionCall = new { name = tc.Name, args = JsonSerializer.Deserialize<JsonElement>(tc.ArgumentsJson) };
+                    // Omit thoughtSignature entirely (rather than send it as null) when absent - a
+                    // present-but-null field is more likely to trip Gemini's "missing" validation than a
+                    // field that's simply not there.
+                    return tc.GeminiThoughtSignature is null
+                        ? (object)new { functionCall }
+                        : new { functionCall, thoughtSignature = tc.GeminiThoughtSignature };
                 }).ToArray()
             };
         }
@@ -173,7 +179,14 @@ public sealed class GeminiChatClient : IChatCompletionClient
             {
                 var name = functionCall.GetProperty("name").GetString() ?? string.Empty;
                 var args = functionCall.TryGetProperty("args", out var a) ? a.GetRawText() : "{}";
-                toolCalls.Add(new ToolCall { Id = Guid.NewGuid().ToString("N"), Name = name, ArgumentsJson = args });
+                var thoughtSignature = part.TryGetProperty("thoughtSignature", out var ts) ? ts.GetString() : null;
+                toolCalls.Add(new ToolCall
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Name = name,
+                    ArgumentsJson = args,
+                    GeminiThoughtSignature = thoughtSignature
+                });
             }
             else if (part.TryGetProperty("text", out var textPart))
             {

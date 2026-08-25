@@ -45,7 +45,7 @@
 }
 
 .toggle:hover {
-  border-color: var(--ink-300);
+  border-color: var(--text-muted);
   background: var(--surface-hover);
 }
 
@@ -53,8 +53,8 @@
 .toggle__chevron {
   width: 6px;
   height: 6px;
-  border-left: 1.5px solid var(--ink-400);
-  border-bottom: 1.5px solid var(--ink-400);
+  border-left: 1.5px solid var(--text-muted);
+  border-bottom: 1.5px solid var(--text-muted);
   transform: rotate(45deg) translate(1px, -1px);
   transition: transform var(--t-base);
 }
@@ -66,13 +66,13 @@
 .new {
   flex: 1;
   padding: 7px var(--space-sm);
-  border: 1px solid var(--ink-900);
+  border: 1px solid var(--accent);
   border-radius: var(--r-sm);
-  background: var(--ink-900);
-  color: var(--surface);
+  background: var(--accent);
+  color: var(--ink-900);
   font-family: var(--font-mono);
   font-size: var(--t-micro);
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: var(--track-micro);
   text-transform: uppercase;
   white-space: nowrap;
@@ -80,8 +80,9 @@
 }
 
 .new:hover:not(:disabled) {
-  background: var(--ink-700);
-  border-color: var(--ink-700);
+  background: var(--accent-lift);
+  border-color: var(--accent-lift);
+  transform: translateY(-1px);
 }
 
 .new:disabled {
@@ -118,7 +119,7 @@
   font-weight: 500;
   letter-spacing: var(--track-micro);
   text-transform: uppercase;
-  color: var(--ink-300);
+  color: var(--text-muted);
 }
 
 .note {
@@ -145,7 +146,7 @@
   gap: var(--space-sm);
   padding: 7px var(--space-sm);
   border-radius: var(--r-sm);
-  color: var(--ink-700);
+  color: var(--text-soft);
   min-height: 34px;
   border-left: 2px solid transparent;
   transition:
@@ -177,9 +178,9 @@
 /* The open conversation is marked in brass - the same accent as your own log entries and every
    work item stamp, so "current / yours / identified" is one consistent colour across the app. */
 .session.is-active {
-  background: var(--brass-wash);
-  border-left-color: var(--brass);
-  color: var(--ink-900);
+  background: var(--accent-wash);
+  border-left-color: var(--accent);
+  color: var(--text);
 }
 
 /* Hidden while the rail is wide; the title/date/delete controls take over. Both are always in the
@@ -197,13 +198,13 @@
   font-family: var(--font-mono);
   font-size: var(--t-micro);
   font-weight: 600;
-  color: var(--ink-600);
+  color: var(--text-soft);
 }
 
 .session.is-active .session__initial {
-  background: var(--brass-wash);
-  border-color: var(--brass-rule);
-  color: var(--brass-deep);
+  background: var(--accent-wash);
+  border-color: var(--accent-rule);
+  color: var(--accent-deep);
 }
 
 .session__title {
@@ -218,7 +219,7 @@
   flex-shrink: 0;
   font-family: var(--font-mono);
   font-size: var(--t-micro);
-  color: var(--ink-300);
+  color: var(--text-muted);
   white-space: nowrap;
 }
 
@@ -226,7 +227,7 @@
   flex-shrink: 0;
   border: none;
   background: transparent;
-  color: var(--ink-300);
+  color: var(--text-muted);
   font-size: 1rem;
   line-height: 1;
   padding: 0 2px;
@@ -247,7 +248,7 @@
   place-items: center;
   border: none;
   background: transparent;
-  color: var(--ink-300);
+  color: var(--text-muted);
   padding: 0 2px;
 }
 
@@ -257,7 +258,7 @@
 }
 
 .session__rename:hover {
-  color: var(--brass-deep);
+  color: var(--accent-deep);
 }
 
 /* Same box as .session__title (flex: 1, same font) so swapping the row into edit mode doesn't shift
@@ -266,10 +267,10 @@
   flex: 1;
   min-width: 0;
   border: none;
-  border-bottom: 1px solid var(--brass);
+  border-bottom: 1px solid var(--accent);
   background: transparent;
   padding: 0;
-  color: var(--ink-900);
+  color: var(--text);
   font-family: inherit;
   font-size: var(--t-sm);
 }
@@ -288,7 +289,7 @@
   font-size: var(--t-micro);
   letter-spacing: var(--track-micro);
   text-transform: uppercase;
-  color: var(--ink-600);
+  color: var(--text-soft);
   white-space: nowrap;
 }
 

@@ -31,7 +31,7 @@
                 type="number"
                 min="1"
                 [ngModel]="workItemIdText()"
-                (ngModelChange)="workItemIdText.set($event)"
+                (ngModelChange)="onWorkItemIdChange($event)"
                 name="workItemId"
                 placeholder="1234"
               />

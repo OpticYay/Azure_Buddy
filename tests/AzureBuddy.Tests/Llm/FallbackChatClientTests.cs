@@ -83,6 +83,28 @@ public class FallbackChatClientTests
     }
 
     [Fact]
+    public async Task CompleteAsync_SingleProviderTransientFailureThenSuccess_Recovers()
+    {
+        var attempts = 0;
+        var provider = new FakeChatClient("Only", () =>
+        {
+            attempts++;
+            if (attempts == 1)
+            {
+                throw new ChatCompletionProviderException("Only", "transient blip");
+            }
+
+            return Success("Only");
+        });
+
+        var client = new FallbackChatClient(new IChatCompletionClient[] { provider }, NullLogger<FallbackChatClient>.Instance);
+        var result = await client.CompleteAsync(new ChatHistory(), Array.Empty<ToolDefinition>());
+
+        Assert.Equal("Only", result.ProviderName);
+        Assert.Equal(2, attempts);
+    }
+
+    [Fact]
     public async Task CompleteAsync_TriesProvidersInConfiguredOrder()
     {
         var callOrder = new List<string>();
@@ -92,6 +114,6 @@ public class FallbackChatClientTests
         var client = new FallbackChatClient(new IChatCompletionClient[] { first, second }, NullLogger<FallbackChatClient>.Instance);
         await client.CompleteAsync(new ChatHistory(), Array.Empty<ToolDefinition>());
 
-        Assert.Equal(new[] { "First", "Second" }, callOrder);
+        Assert.Equal(new[] { "First", "First", "Second" }, callOrder);
     }
 }

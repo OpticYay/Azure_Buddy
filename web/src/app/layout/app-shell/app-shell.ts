@@ -2,6 +2,7 @@ import { Component, inject } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 
 import { AuthService } from '../../core/services/auth.service';
+import { viewTransition } from '../../shared/animations';
 import { ToastContainer } from '../../shared/ui/toast-container/toast-container';
 
 // The shared frame for every "logged in" page: a top bar (nav links, current user, logout) with a
@@ -13,6 +14,7 @@ import { ToastContainer } from '../../shared/ui/toast-container/toast-container'
   imports: [RouterOutlet, RouterLink, RouterLinkActive, ToastContainer],
   templateUrl: './app-shell.html',
   styleUrl: './app-shell.css',
+  animations: [viewTransition],
 })
 export class AppShell {
   private readonly auth = inject(AuthService);
@@ -22,6 +24,15 @@ export class AppShell {
   // components commonly re-expose a service's signal like this rather than duplicating its logic.
   readonly currentUser = this.auth.currentUser;
   readonly isAdmin = this.auth.isAdmin;
+
+  /** Bound as `[@viewTransition]="prepareRoute(outlet)"` on `.stage` (app-shell.html) - returns a
+   * key that changes exactly when the activated route does, which is what makes the `'* <=> *'`
+   * transition in shared/animations.ts replay once per real navigation instead of on every
+   * unrelated change-detection pass. `outlet.isActivated` guards the brief window before the very
+   * first route has finished activating, when `activatedRouteData` would otherwise throw. */
+  prepareRoute(outlet: RouterOutlet): string {
+    return outlet.isActivated ? outlet.activatedRoute.snapshot.url.join('/') : '';
+  }
 
   logout(): void {
     // We don't need to react to the logout call's result in the template - AuthService.logout()

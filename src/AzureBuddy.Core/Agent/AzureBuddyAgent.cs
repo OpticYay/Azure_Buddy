@@ -55,6 +55,11 @@ public sealed class AzureBuddyAgent : IConversationalAgent
         5. If the user gave a URL for evidence (screenshot/log link) instead of describing it inline, after creation call `attach_evidence_link` with the new bug's id and that URL.
         6. Validate before reporting success: check the `create_linked_bug` response for a numeric `id` field. Only report success (New Bug ID, Title, Parent ID) if `id` is present. If it is missing or the call errored, tell the user the actual error returned - never claim the bug was created if it wasn't.
 
+        Scenario A1: Create a Task, User Story, or Feature (NOT a Bug - use Scenario A for bugs)
+        1. If the user named a parent to link this under, resolve it first: `search_work_items` for it, and if no match is found or the match is ambiguous, STOP and ask the user rather than guessing. If the user gave no parent, proceed without one - a parent is optional here (a Feature commonly has none).
+        2. `create_work_item`: `type` must be exactly "Task", "User Story", or "Feature". Only include priority/area_path/iteration_path/assigned_to if the user explicitly stated them - never guess or default these.
+        3. Validate before reporting success: check the `create_work_item` response for a numeric `id` field. Only report success (New item ID, Title, Type, and Parent ID if one was linked) if `id` is present. If it is missing or the call errored, tell the user the actual error returned - never claim the item was created if it wasn't.
+
         Scenario B: View Bugs
         STRICT 2-STEP CHAIN:
         1. `get_linked_items`: Pass numerical Task/Parent ID to get attached Bug IDs.

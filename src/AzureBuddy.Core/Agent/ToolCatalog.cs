@@ -55,6 +55,25 @@ public sealed class ToolCatalog
         {
             Definition = new ToolDefinition
             {
+                Name = "create_work_item",
+                Description = "Use this tool to create a new Task, User Story, or Feature - NOT a Bug (use create_linked_bug for bugs instead, which has its own repro-steps/severity handling). Required: type (exactly 'Task', 'User Story', or 'Feature'), title, description. parent_id is optional - include it only when the user named a parent to link this under (verified numerical id, resolved via search_work_items first, never guessed); a Feature commonly has no parent. Other optional fields: only include if the user explicitly specified them - never guess.",
+                ParametersSchema = Schema(
+                    required: new[] { "type", "title", "description" },
+                    ("type", "string", "Exactly one of: Task, User Story, Feature."),
+                    ("title", "string", "Work item title, as stated/summarized by the user - no '[Bug] -' style prefix."),
+                    ("description", "string", "Plain description text for the item."),
+                    ("parent_id", "string", "Optional verified numerical id of the parent work item to link this under. Never guess - resolve it with search_work_items first if the user named it. Leave blank if the user gave no parent."),
+                    ("priority", "string", "Optional integer 1-4 priority (1=highest). Leave blank if the user did not explicitly specify one."),
+                    ("area_path", "string", "Optional Area Path. Leave blank if the user did not explicitly specify one."),
+                    ("iteration_path", "string", "Optional Iteration Path. Leave blank if the user did not explicitly specify one."),
+                    ("assigned_to", "string", "Optional assignee email or display name. Leave blank if the user did not explicitly specify one."))
+            },
+            InvokeAsync = _toolset.CreateWorkItemAsync
+        },
+        new AgentTool
+        {
+            Definition = new ToolDefinition
+            {
                 Name = "get_linked_items",
                 Description = "Use this tool to find all existing bugs that are linked to a specific User Story. You must provide one argument named parent_id, which is the numerical ID of the User Story. Always use the search_work_items tool first to find the parent_id if you do not already know it.",
                 ParametersSchema = Schema(("parent_id", "string", "The numerical id of the parent work item (User Story/Task) to find linked bugs for. Must be a verified numeric id, never guessed."))

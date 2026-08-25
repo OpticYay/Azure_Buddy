@@ -117,6 +117,66 @@ public sealed class AdoWorkItemToolset
         }
     }
 
+    /// <summary>Types this tool will create - deliberately excludes "Bug", which keeps its own dedicated
+    /// tool/template (CreateLinkedBugAsync) with the repro-steps HTML format and Severity field bugs need
+    /// and these types don't.</summary>
+    private static readonly HashSet<string> CreatableWorkItemTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Task", "User Story", "Feature"
+    };
+
+    public async Task<string> CreateWorkItemAsync(JsonElement args, CancellationToken ct)
+    {
+        var connection = _connectionAccessor.Require();
+        var type = GetString(args, "type");
+
+        if (!CreatableWorkItemTypes.Contains(type))
+        {
+            return JsonSerializer.Serialize(new
+            {
+                error = $"Unsupported work item type '{type}'. Use create_linked_bug for Bugs, or one of Task, User Story, Feature here."
+            });
+        }
+
+        var title = GetString(args, "title");
+        var description = GetString(args, "description");
+        var parentId = GetOptionalString(args, "parent_id");
+
+        var ops = new List<JsonPatchOperation>
+        {
+            JsonPatchOperation.Add($"/fields/{AdoFields.Title}", title),
+            JsonPatchOperation.Add($"/fields/{AdoFields.Description}", description)
+        };
+
+        if (!string.IsNullOrEmpty(parentId))
+        {
+            ops.Add(AdoRelationOps.ParentLink(BugCreationRequestBuilder.ParentWorkItemUrl(connection, parentId)));
+        }
+
+        AddOptionalField(ops, AdoFields.Priority, GetOptionalString(args, "priority"));
+        AddOptionalField(ops, AdoFields.AreaPath, GetOptionalString(args, "area_path"));
+        AddOptionalField(ops, AdoFields.IterationPath, GetOptionalString(args, "iteration_path"));
+        AddOptionalField(ops, AdoFields.AssignedTo, GetOptionalString(args, "assigned_to"));
+
+        try
+        {
+            var created = await _adoClient.CreateWorkItemAsync(connection, type, ops, ct);
+            return JsonSerializer.Serialize(new { id = created.Id, title = created.Title, type });
+        }
+        catch (AdoApiException ex)
+        {
+            return JsonSerializer.Serialize(new { error = ex.Message });
+        }
+    }
+
+    private static void AddOptionalField(List<JsonPatchOperation> ops, string field, string? value)
+    {
+        if (!string.IsNullOrEmpty(value))
+        {
+            ops.Add(JsonPatchOperation.Add($"/fields/{field}", value));
+        }
+    }
+
     public async Task<string> GetLinkedItemsAsync(JsonElement args, CancellationToken ct)
     {
         var connection = _connectionAccessor.Require();

@@ -33,7 +33,7 @@ public class ToolCatalogTests
 
     private static readonly string[] ExpectedToolNames =
     {
-        "search_work_items", "create_linked_bug", "get_linked_items", "get_work_item_details",
+        "search_work_items", "create_linked_bug", "create_work_item", "get_linked_items", "get_work_item_details",
         "update_work_item", "get_my_work_items", "get_prioritized_work_items", "attach_evidence_link",
         "query_work_items", "resolve_identity", "get_work_item_full", "update_work_item_fields",
         "link_work_items", "attach_file_to_work_item"

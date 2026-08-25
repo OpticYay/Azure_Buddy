@@ -33,7 +33,7 @@
   border: 1px solid var(--rule);
   border-radius: var(--r-sm);
   background: var(--surface);
-  color: var(--ink-500, var(--ink-400));
+  color: var(--ink-500, var(--text-muted));
   cursor: pointer;
   transition:
     border-color var(--t-fast),
@@ -42,13 +42,13 @@
 }
 
 .clip:hover {
-  border-color: var(--brass);
-  color: var(--brass-deep);
-  background: var(--brass-wash);
+  border-color: var(--accent);
+  color: var(--accent-deep);
+  background: var(--accent-wash);
 }
 
 .clip:focus-within {
-  outline: 2px solid var(--brass);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -71,28 +71,33 @@ textarea {
 
 textarea:focus-visible {
   outline: none;
-  border-color: var(--brass);
-  box-shadow: 0 0 0 3px var(--brass-wash);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-wash);
 }
 
 .send {
   flex-shrink: 0;
   height: 36px;
   padding: 0 var(--space-md);
-  border: 1px solid var(--ink-900);
+  border: 1px solid var(--accent);
   border-radius: var(--r-sm);
-  background: var(--ink-900);
-  color: var(--surface);
+  background: var(--accent);
+  color: var(--ink-900);
   font-family: var(--font-mono);
   font-size: var(--t-micro);
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: var(--track-micro);
   text-transform: uppercase;
+  transition:
+    background var(--t-fast),
+    border-color var(--t-fast),
+    transform var(--t-fast);
 }
 
 .send:hover:not(:disabled) {
-  background: var(--ink-700);
-  border-color: var(--ink-700);
+  background: var(--accent-lift);
+  border-color: var(--accent-lift);
+  transform: translateY(-1px);
 }
 
 .send:disabled {
@@ -153,7 +158,7 @@ textarea:focus-visible {
   margin: 0;
   font-family: var(--font-mono);
   font-size: var(--t-sm);
-  color: var(--ink-600);
+  color: var(--text-soft);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -173,10 +178,10 @@ textarea:focus-visible {
   gap: 2px;
   width: fit-content;
   padding: 2px var(--space-xs);
-  border: 1px solid var(--brass-rule);
+  border: 1px solid var(--accent-rule);
   border-radius: var(--r-sm);
-  background: var(--brass-wash);
-  color: var(--brass-deep);
+  background: var(--accent-wash);
+  color: var(--accent-deep);
   font-family: var(--font-mono);
   font-size: var(--t-sm);
   font-weight: 600;
@@ -190,7 +195,7 @@ textarea:focus-visible {
   font-family: var(--font-mono);
   font-size: var(--t-sm);
   font-weight: 600;
-  color: var(--brass-deep);
+  color: var(--accent-deep);
 }
 
 .attach__input input:focus-visible {
@@ -198,8 +203,8 @@ textarea:focus-visible {
 }
 
 .attach__input:focus-within {
-  border-color: var(--brass);
-  box-shadow: 0 0 0 3px rgba(169, 124, 47, 0.15);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-wash);
 }
 
 .attach__remove {

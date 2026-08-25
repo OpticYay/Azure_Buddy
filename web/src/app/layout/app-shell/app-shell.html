@@ -38,8 +38,13 @@
   </div>
 </header>
 
-<main class="stage">
-  <router-outlet></router-outlet>
+<!--
+  [@viewTransition] plays whenever prepareRoute(outlet)'s return value changes - i.e. on every real
+  navigation between shell pages (Chat, Connection, Model, States, your account) - see the trigger's
+  comment in shared/animations.ts and prepareRoute() in app-shell.ts.
+-->
+<main class="stage" [@viewTransition]="prepareRoute(outlet)">
+  <router-outlet #outlet="outlet"></router-outlet>
 </main>
 
 <app-toast-container></app-toast-container>

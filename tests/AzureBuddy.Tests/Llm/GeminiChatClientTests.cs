@@ -176,6 +176,38 @@ public class GeminiChatClientTests : IDisposable
     }
 
     [Fact]
+    public async Task CompleteAsync_ToolResultMessage_SentWithUserRoleNotFunction()
+    {
+        // Gemini's generateContent API rejects role "function" outright ("Role 'function' is not
+        // supported... valid role: ... MODEL, USER") - a functionResponse part must travel inside a
+        // "user" role content instead. This reproduces the exact request shape a tool-calling round
+        // sends back to Gemini after invoking a tool.
+        _server
+            .Given(Request.Create().UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                candidates = new[]
+                {
+                    new { content = new { parts = new[] { new { text = "done" } } } }
+                }
+            }));
+
+        var history = NewHistory("find the login item");
+        history.Add(ChatMessage.ToolResult("call-1", "search_work_items", "{\"id\":123}"));
+
+        var client = NewClient();
+        await client.CompleteAsync(history, Array.Empty<ToolDefinition>());
+
+        var logEntry = Assert.Single(_server.LogEntries);
+        var body = JsonDocument.Parse(logEntry.RequestMessage!.Body!).RootElement;
+        var toolResultContent = body.GetProperty("contents").EnumerateArray()
+            .Single(c => c.TryGetProperty("parts", out var parts)
+                && parts.EnumerateArray().Any(p => p.TryGetProperty("functionResponse", out _)));
+
+        Assert.Equal("user", toolResultContent.GetProperty("role").GetString());
+    }
+
+    [Fact]
     public async Task CompleteAsync_ToolDefinitionsInRequest_SentAsFunctionDeclarations()
     {
         _server

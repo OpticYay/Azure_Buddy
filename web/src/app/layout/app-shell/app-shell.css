@@ -16,7 +16,7 @@
   height: 52px;
   flex-shrink: 0;
   background: var(--ink-900);
-  border-bottom: 1px solid var(--brass);
+  border-bottom: 1px solid var(--accent);
   position: relative;
   z-index: 2;
 }
@@ -37,11 +37,10 @@
 
 .brand__name {
   font-family: var(--font-display);
-  font-variation-settings: 'wdth' 118;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 0.95rem;
   letter-spacing: -0.005em;
-  color: var(--surface);
+  color: var(--text);
 }
 
 .nav {
@@ -59,7 +58,7 @@
   letter-spacing: var(--track-micro);
   text-transform: uppercase;
   text-decoration: none;
-  color: var(--ink-200);
+  color: var(--text-muted);
   padding: 4px 0;
   border-bottom: 1px solid transparent;
   transition:
@@ -68,12 +67,12 @@
 }
 
 .nav a:hover {
-  color: var(--surface);
+  color: var(--text);
 }
 
 .nav a.is-active {
-  color: var(--brass-lift);
-  border-bottom-color: var(--brass);
+  color: var(--accent-lift);
+  border-bottom-color: var(--accent);
 }
 
 .account {
@@ -85,7 +84,7 @@
 .account__email {
   font-family: var(--font-mono);
   font-size: var(--t-micro);
-  color: var(--ink-300);
+  color: var(--text-muted);
   text-decoration: none;
   border-bottom: 1px solid transparent;
   transition:
@@ -95,8 +94,8 @@
 
 .account__email:hover,
 .account__email.is-active {
-  color: var(--brass-lift);
-  border-bottom-color: var(--brass);
+  color: var(--accent-lift);
+  border-bottom-color: var(--accent);
 }
 
 .btn-quiet {
@@ -104,7 +103,7 @@
   border: 1px solid var(--ink-700);
   border-radius: var(--r-sm);
   background: transparent;
-  color: var(--ink-200);
+  color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: var(--t-micro);
   letter-spacing: var(--track-micro);
@@ -112,8 +111,8 @@
 }
 
 .btn-quiet:hover {
-  border-color: var(--brass);
-  color: var(--brass-lift);
+  border-color: var(--accent);
+  color: var(--accent-lift);
 }
 
 .stage {

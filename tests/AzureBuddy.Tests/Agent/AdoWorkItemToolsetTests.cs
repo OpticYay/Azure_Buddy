@@ -179,6 +179,90 @@ public class AdoWorkItemToolsetTests
         Assert.Contains("400", doc.RootElement.GetProperty("error").GetString());
     }
 
+    // ---- CreateWorkItemAsync ----
+
+    [Fact]
+    public async Task CreateWorkItemAsync_UnsupportedType_ReturnsErrorWithoutCallingAdo()
+    {
+        var adoClient = new FakeAdoClient();
+        var toolset = NewToolset(adoClient);
+
+        var result = await toolset.CreateWorkItemAsync(Args(new { type = "Bug", title = "t", description = "d" }), CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(result);
+        Assert.Contains("Unsupported work item type", doc.RootElement.GetProperty("error").GetString());
+        Assert.Empty(adoClient.Calls);
+    }
+
+    [Theory]
+    [InlineData("Task")]
+    [InlineData("User Story")]
+    [InlineData("Feature")]
+    public async Task CreateWorkItemAsync_SupportedType_SendsTitleAndDescription(string type)
+    {
+        var adoClient = new FakeAdoClient();
+        IReadOnlyList<JsonPatchOperation>? capturedOps = null;
+        string? capturedType = null;
+        adoClient.CreateWorkItemBehavior = (_, workItemType, ops) =>
+        {
+            capturedType = workItemType;
+            capturedOps = ops;
+            return new WorkItem { Id = 99, Fields = new Dictionary<string, object?> { ["System.Title"] = "t" } };
+        };
+
+        var toolset = NewToolset(adoClient);
+        var result = await toolset.CreateWorkItemAsync(Args(new { type, title = "t", description = "d" }), CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(result);
+        Assert.Equal(99, doc.RootElement.GetProperty("id").GetInt32());
+        Assert.Equal(type, capturedType);
+        Assert.Contains(capturedOps!, op => op.Path == "/fields/System.Title");
+        Assert.Contains(capturedOps!, op => op.Path == "/fields/System.Description");
+        Assert.DoesNotContain(capturedOps!, op => op.Path == "/relations/-");
+    }
+
+    [Fact]
+    public async Task CreateWorkItemAsync_ParentIdProvided_AddsParentLink()
+    {
+        var adoClient = new FakeAdoClient();
+        IReadOnlyList<JsonPatchOperation>? capturedOps = null;
+        adoClient.CreateWorkItemBehavior = (_, _, ops) => { capturedOps = ops; return new WorkItem { Id = 1 }; };
+
+        var toolset = NewToolset(adoClient);
+        await toolset.CreateWorkItemAsync(Args(new { type = "Task", title = "t", description = "d", parent_id = "42" }), CancellationToken.None);
+
+        Assert.Contains(capturedOps!, op => op.Path == "/relations/-");
+    }
+
+    [Fact]
+    public async Task CreateWorkItemAsync_OptionalFieldsIncludedWhenProvided()
+    {
+        var adoClient = new FakeAdoClient();
+        IReadOnlyList<JsonPatchOperation>? capturedOps = null;
+        adoClient.CreateWorkItemBehavior = (_, _, ops) => { capturedOps = ops; return new WorkItem { Id = 1 }; };
+
+        var toolset = NewToolset(adoClient);
+        await toolset.CreateWorkItemAsync(Args(new { type = "User Story", title = "t", description = "d", priority = "1", area_path = "Proj\\Area", iteration_path = "Proj\\Sprint1", assigned_to = "user@example.com" }), CancellationToken.None);
+
+        Assert.Contains(capturedOps!, op => op.Path == "/fields/Microsoft.VSTS.Common.Priority");
+        Assert.Contains(capturedOps!, op => op.Path == "/fields/System.AreaPath");
+        Assert.Contains(capturedOps!, op => op.Path == "/fields/System.IterationPath");
+        Assert.Contains(capturedOps!, op => op.Path == "/fields/System.AssignedTo");
+    }
+
+    [Fact]
+    public async Task CreateWorkItemAsync_AdoApiException_ReturnsErrorMessage()
+    {
+        var adoClient = new FakeAdoClient();
+        adoClient.CreateWorkItemBehavior = (_, _, _) => throw new AdoApiException("400 bad request");
+        var toolset = NewToolset(adoClient);
+
+        var result = await toolset.CreateWorkItemAsync(Args(new { type = "Feature", title = "t", description = "d" }), CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(result);
+        Assert.Contains("400", doc.RootElement.GetProperty("error").GetString());
+    }
+
     // ---- GetLinkedItemsAsync ----
 
     [Fact]

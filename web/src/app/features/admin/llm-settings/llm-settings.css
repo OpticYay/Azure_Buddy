@@ -17,7 +17,7 @@
 .page__head {
   margin-bottom: var(--space-lg);
   padding-left: var(--space-md);
-  border-left: 2px solid var(--brass);
+  border-left: 2px solid var(--accent);
 }
 
 h1 {
@@ -44,16 +44,16 @@ h1 {
   font-size: var(--t-micro);
   letter-spacing: var(--track-micro);
   text-transform: uppercase;
-  color: var(--ink-300);
+  color: var(--text-muted);
 }
 
 .notice {
   margin: 0 0 var(--space-lg);
   padding: var(--space-sm) var(--space-md);
-  background: var(--brass-wash);
-  border: 1px solid var(--brass-rule);
+  background: var(--accent-wash);
+  border: 1px solid var(--accent-rule);
   border-radius: var(--r-sm);
-  color: var(--brass-deep);
+  color: var(--accent-deep);
   font-size: var(--t-sm);
 }
 
@@ -75,7 +75,7 @@ h1 {
   border-bottom: 1px solid var(--rule);
   font-family: var(--font-mono);
   font-size: var(--t-sm);
-  color: var(--ink-800);
+  color: var(--text-soft);
   overflow-wrap: anywhere;
 }
 
@@ -94,7 +94,7 @@ h1 {
 
 .provider-block__label {
   margin: 0 0 var(--space-sm);
-  color: var(--ink-500, var(--ink-400));
+  color: var(--ink-500, var(--text-muted));
 }
 
 /* ── Form ────────────────────────────────────────────────────────────────────────────────── */
@@ -136,9 +136,9 @@ form {
 .field input:focus-visible,
 .field select:focus-visible {
   outline: none;
-  border-color: var(--brass);
+  border-color: var(--accent);
   background: var(--surface);
-  box-shadow: 0 0 0 3px var(--brass-wash);
+  box-shadow: 0 0 0 3px var(--accent-wash);
 }
 
 .field__error {
@@ -157,14 +157,14 @@ form {
   align-items: center;
   gap: var(--space-xs);
   font-size: var(--t-sm);
-  color: var(--ink-700);
+  color: var(--text-soft);
   padding-bottom: 9px;
 }
 
 .checkbox-field input {
   width: 16px;
   height: 16px;
-  accent-color: var(--brass);
+  accent-color: var(--accent);
 }
 
 /* A plain HTML <fieldset>/<legend> - one of the few native elements that already does exactly what's
@@ -189,7 +189,7 @@ form {
 
 .provider-fields legend {
   padding: 0 0 var(--space-sm);
-  color: var(--ink-500, var(--ink-400));
+  color: var(--ink-500, var(--text-muted));
 }
 
 .alert {
@@ -217,7 +217,7 @@ form {
   border: 1px solid var(--rule-strong);
   border-radius: var(--r-sm);
   background: var(--surface);
-  color: var(--ink-700);
+  color: var(--text-soft);
   font-family: var(--font-mono);
   font-size: var(--t-micro);
   font-weight: 500;
@@ -226,19 +226,20 @@ form {
 }
 
 .btn:hover:not(:disabled) {
-  border-color: var(--ink-400);
+  border-color: var(--text-muted);
   background: var(--surface-hover);
 }
 
 .btn--primary {
-  border-color: var(--ink-900);
-  background: var(--ink-900);
-  color: var(--surface);
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--ink-900);
+  font-weight: 600;
 }
 
 .btn--primary:hover:not(:disabled) {
-  background: var(--ink-700);
-  border-color: var(--ink-700);
+  background: var(--accent-lift);
+  border-color: var(--accent-lift);
 }
 
 .btn:disabled {

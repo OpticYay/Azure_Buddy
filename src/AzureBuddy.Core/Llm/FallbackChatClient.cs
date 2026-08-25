@@ -11,6 +11,14 @@ namespace AzureBuddy.Core.Llm;
 /// </summary>
 public sealed class FallbackChatClient : IChatCompletionClient
 {
+    // ChatCompletionProviderException's own contract (see IChatCompletionClient.cs) is "transient/
+    // retryable" - a single deployment with only one provider configured (e.g. Gemini alone, no Ollama
+    // fallback) would otherwise turn one transient blip (timeout, 5xx, rate limit) into a full chat
+    // failure with nothing left to fall back to. One retry per provider, before moving on, costs
+    // nothing when providers are healthy and rescues exactly that case.
+    private const int AttemptsPerProvider = 2;
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(300);
+
     private readonly IReadOnlyList<IChatCompletionClient> _providersInOrder;
     private readonly ILogger<FallbackChatClient> _logger;
 
@@ -36,14 +44,26 @@ public sealed class FallbackChatClient : IChatCompletionClient
 
         foreach (var provider in _providersInOrder)
         {
-            try
+            for (var attempt = 1; attempt <= AttemptsPerProvider; attempt++)
             {
-                return await provider.CompleteAsync(history, tools, cancellationToken);
-            }
-            catch (ChatCompletionProviderException ex)
-            {
-                _logger.LogWarning(ex, "Provider {Provider} failed, trying next fallback provider.", provider.ProviderName);
-                lastFailure = ex;
+                try
+                {
+                    return await provider.CompleteAsync(history, tools, cancellationToken);
+                }
+                catch (ChatCompletionProviderException ex)
+                {
+                    lastFailure = ex;
+                    if (attempt < AttemptsPerProvider)
+                    {
+                        _logger.LogWarning(ex, "Provider {Provider} failed (attempt {Attempt}/{MaxAttempts}), retrying.",
+                            provider.ProviderName, attempt, AttemptsPerProvider);
+                        await Task.Delay(RetryDelay, cancellationToken);
+                    }
+                    else
+                    {
+                        _logger.LogWarning(ex, "Provider {Provider} failed, trying next fallback provider.", provider.ProviderName);
+                    }
+                }
             }
         }
 

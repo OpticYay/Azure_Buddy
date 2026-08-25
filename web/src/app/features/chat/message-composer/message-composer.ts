@@ -185,6 +185,18 @@ export class MessageComposer implements OnDestroy {
     this.attachedPreviewUrl.set(URL.createObjectURL(file));
   }
 
+  /** `<input type="number">` bound via ngModel is handled by Angular's NumberValueAccessor, not the
+   * default string one - it emits a `number` (or `null` when cleared) through `ngModelChange`, never a
+   * string. workItemIdText is typed/treated as a string everywhere else here (`.trim()` in send(),
+   * Number(...) in sendScreenshot()), so writing that number straight into the signal made every send()
+   * call throw a TypeError the instant a screenshot with a work item id was sent - synchronously, inside
+   * the button's click handler, before any HTTP request went out or errorMessage got set. That's why it
+   * looked "stuck": the attachment and typed id just stayed exactly as they were, with no visible
+   * feedback at all. Converting here keeps the signal's contract (always a string) intact everywhere else. */
+  onWorkItemIdChange(value: number | null): void {
+    this.workItemIdText.set(value === null ? '' : String(value));
+  }
+
   removeAttachment(): void {
     this.revokePreviewUrl();
     this.attachedFile.set(null);

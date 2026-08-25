@@ -20,7 +20,7 @@
   font-weight: 600;
   letter-spacing: var(--track-micro);
   text-transform: uppercase;
-  color: var(--ink-600);
+  color: var(--text-soft);
 }
 
 .pending__hr {
@@ -46,7 +46,7 @@
 .pending__caret {
   width: 7px;
   height: 14px;
-  background: var(--brass);
+  background: var(--accent);
   animation: blink 1s steps(1, end) infinite;
 }
 
@@ -55,7 +55,7 @@
   font-size: var(--t-micro);
   letter-spacing: var(--track-micro);
   text-transform: uppercase;
-  color: var(--ink-400);
+  color: var(--text-muted);
 }
 
 @keyframes blink {
