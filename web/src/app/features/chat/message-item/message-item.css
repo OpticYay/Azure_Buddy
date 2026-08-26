@@ -18,7 +18,7 @@
 /* Your own entries are marked in brass - the accent colour, used here because "which of these did
    I write" is worth one glance, not a whole layout convention. */
 .entry.is-you {
-  border-left-color: var(--brass);
+  border-left-color: var(--accent);
 }
 
 .entry.is-failed {
@@ -51,12 +51,12 @@
 }
 
 .entry__role {
-  color: var(--ink-600);
+  color: var(--text-soft);
   font-weight: 600;
 }
 
 .entry.is-you .entry__role {
-  color: var(--brass-deep);
+  color: var(--accent-deep);
 }
 
 /* The hairline that fills the space between the role and the tag - it's what makes the header read
@@ -72,7 +72,7 @@
   border: 1px solid var(--rule-strong);
   border-radius: var(--r-sm);
   background: var(--surface);
-  color: var(--ink-600);
+  color: var(--text-soft);
 }
 
 .entry.is-failed .entry__tag {
@@ -82,7 +82,7 @@
 }
 
 .entry__time {
-  color: var(--ink-300);
+  color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -97,8 +97,8 @@
 }
 
 .entry.is-you .entry__body {
-  background: var(--brass-wash);
-  border-color: var(--brass-rule);
+  background: var(--accent-wash);
+  border-color: var(--accent-rule);
 }
 
 .entry.is-failed .entry__body {
@@ -148,7 +148,7 @@
   font-weight: 600;
   letter-spacing: var(--track-micro);
   text-transform: uppercase;
-  color: var(--ink-400);
+  color: var(--text-muted);
 }
 
 :host ::ng-deep .prose .md-heading:first-child {
@@ -204,7 +204,7 @@
   font-weight: 600;
   letter-spacing: var(--track-micro);
   text-transform: uppercase;
-  color: var(--ink-400);
+  color: var(--text-muted);
   border-bottom: 1px solid var(--rule-strong);
   white-space: nowrap;
 }
@@ -212,7 +212,7 @@
 :host ::ng-deep .prose-table td {
   padding: var(--space-sm) var(--space-md) var(--space-sm) 0;
   border-bottom: 1px solid var(--rule);
-  color: var(--ink-800);
+  color: var(--text-soft);
   vertical-align: top;
 }
 
@@ -237,7 +237,7 @@
 }
 
 .entry.is-failed .prose {
-  color: #7e241c;
+  color: var(--fail);
 }
 
 /* ── Confirmation: a written record ──────────────────────────────────────────────────────────
@@ -270,14 +270,14 @@
   font-weight: 500;
   letter-spacing: var(--track-micro);
   text-transform: uppercase;
-  color: var(--brass-deep);
+  color: var(--accent-deep);
   text-decoration: none;
-  border-bottom: 1px solid var(--brass-rule);
+  border-bottom: 1px solid var(--accent-rule);
   padding-bottom: 1px;
 }
 
 .record__link:hover {
-  border-bottom-color: var(--brass);
+  border-bottom-color: var(--accent);
 }
 
 /* ── Results table ───────────────────────────────────────────────────────────────────────────
@@ -302,7 +302,7 @@
   font-weight: 600;
   letter-spacing: var(--track-micro);
   text-transform: uppercase;
-  color: var(--ink-400);
+  color: var(--text-muted);
   border-bottom: 1px solid var(--rule-strong);
   white-space: nowrap;
 }
@@ -310,7 +310,7 @@
 .results td {
   padding: var(--space-sm) var(--space-md) var(--space-sm) 0;
   border-bottom: 1px solid var(--rule);
-  color: var(--ink-800);
+  color: var(--text-soft);
   vertical-align: top;
 }
 
@@ -329,7 +329,7 @@
   font-size: var(--t-micro);
   letter-spacing: var(--track-micro);
   text-transform: uppercase;
-  color: var(--ink-300);
+  color: var(--text-muted);
 }
 
 /* ── Evidence ────────────────────────────────────────────────────────────────────────────────

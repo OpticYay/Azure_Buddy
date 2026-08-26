@@ -3,7 +3,10 @@ import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 
 import { WorkItemStatesService } from '../../../core/services/work-item-states.service';
-import { WorkItemStateView, WorkItemTypeStatesView } from '../../../core/models/work-item-states.models';
+import {
+  WorkItemStateView,
+  WorkItemTypeStatesView,
+} from '../../../core/models/work-item-states.models';
 import { extractApiErrorMessage } from '../../../core/models/api-error.model';
 import { ToastService } from '../../../core/services/toast.service';
 import { popIn } from '../../../shared/animations';
@@ -78,7 +81,11 @@ export class WorkItemStates implements OnInit {
 
   startEdit(row: WorkItemStateView): void {
     this.editingId.set(row.id);
-    this.editDraft.set({ stateName: row.stateName, displayOrder: row.displayOrder, isEnabled: row.isEnabled });
+    this.editDraft.set({
+      stateName: row.stateName,
+      displayOrder: row.displayOrder,
+      isEnabled: row.isEnabled,
+    });
     this.actionError.set(null);
   }
 
@@ -97,7 +104,11 @@ export class WorkItemStates implements OnInit {
     this.actionError.set(null);
 
     this.service
-      .update(row.id, { stateName: draft.stateName.trim(), displayOrder: draft.displayOrder, isEnabled: draft.isEnabled })
+      .update(row.id, {
+        stateName: draft.stateName.trim(),
+        displayOrder: draft.displayOrder,
+        isEnabled: draft.isEnabled,
+      })
       .subscribe({
         next: () => {
           this.savingId.set(null);
@@ -118,7 +129,11 @@ export class WorkItemStates implements OnInit {
     }
     this.savingId.set(row.id);
     this.service
-      .update(row.id, { stateName: row.stateName, displayOrder: row.displayOrder, isEnabled: !row.isEnabled })
+      .update(row.id, {
+        stateName: row.stateName,
+        displayOrder: row.displayOrder,
+        isEnabled: !row.isEnabled,
+      })
       .subscribe({
         next: () => {
           this.savingId.set(null);
@@ -174,7 +189,12 @@ export class WorkItemStates implements OnInit {
     this.actionError.set(null);
 
     this.service
-      .create({ workItemType: draft.workItemType, stateName: draft.stateName.trim(), displayOrder: draft.displayOrder, isEnabled: true })
+      .create({
+        workItemType: draft.workItemType,
+        stateName: draft.stateName.trim(),
+        displayOrder: draft.displayOrder,
+        isEnabled: true,
+      })
       .subscribe({
         next: () => {
           this.adding.set(false);
@@ -210,7 +230,12 @@ export class WorkItemStates implements OnInit {
     this.actionError.set(null);
 
     this.service
-      .create({ workItemType: draft.workItemType.trim(), stateName: draft.stateName.trim(), displayOrder: 0, isEnabled: true })
+      .create({
+        workItemType: draft.workItemType.trim(),
+        stateName: draft.stateName.trim(),
+        displayOrder: 0,
+        isEnabled: true,
+      })
       .subscribe({
         next: () => {
           this.adding.set(false);
@@ -220,7 +245,9 @@ export class WorkItemStates implements OnInit {
         },
         error: (err: HttpErrorResponse) => {
           this.adding.set(false);
-          this.actionError.set(extractApiErrorMessage(err.error, 'Could not add this work item type.'));
+          this.actionError.set(
+            extractApiErrorMessage(err.error, 'Could not add this work item type.'),
+          );
         },
       });
   }

@@ -152,32 +152,11 @@ public sealed class AccountService
     private async Task RevokeOtherSessionsAsync(string userId, string? currentRefreshToken, CancellationToken cancellationToken)
     {
         var keepHash = currentRefreshToken is null ? null : TokenService.HashToken(currentRefreshToken);
-
-        var activeTokens = await _dbContext.RefreshTokens
-            .Where(t => t.UserId == userId && t.RevokedAt == null)
-            .ToListAsync(cancellationToken);
-
-        if (activeTokens.Count == 0)
-        {
-            return;
-        }
-
         var now = DateTime.UtcNow;
-        var revokedAny = false;
-        foreach (var token in activeTokens)
-        {
-            if (keepHash is not null && token.TokenHash == keepHash)
-            {
-                continue;
-            }
-            token.RevokedAt = now;
-            revokedAny = true;
-        }
 
-        if (revokedAny)
-        {
-            await _dbContext.SaveChangesAsync(cancellationToken);
-        }
+        await _dbContext.RefreshTokens
+            .Where(t => t.UserId == userId && t.RevokedAt == null && (keepHash == null || t.TokenHash != keepHash))
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, now), cancellationToken);
     }
 
     private async Task<ApplicationUser> RequireUserAsync(string userId)

@@ -5,6 +5,7 @@ using AzureBuddy.Core.WorkItemStates;
 using AzureBuddy.Data;
 using AzureBuddy.Tests.Integration;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -38,10 +39,13 @@ public class UpdateItemFlowTests
         var dbContext = NewDbContext();
         dbContext.WorkItemStateConfigurations.Add(new AzureBuddy.Data.Entities.WorkItemStateConfiguration
         {
-            WorkItemType = "Bug", StateName = "Active", DisplayOrder = 0, IsEnabled = true,
+            WorkItemType = "Bug",
+            StateName = "Active",
+            DisplayOrder = 0,
+            IsEnabled = true,
         });
         await dbContext.SaveChangesAsync();
-        var stateConfigService = new WorkItemStateConfigService(dbContext);
+        var stateConfigService = new WorkItemStateConfigService(dbContext, new MemoryCache(new MemoryCacheOptions()));
 
         var adoClient = new FakeAdoClient();
         adoClient.GetWorkItemsBehavior = (_, ids, _) =>
@@ -66,7 +70,7 @@ public class UpdateItemFlowTests
             new AzureBuddy.Data.Entities.WorkItemStateConfiguration { WorkItemType = "Bug", StateName = "Resolved", DisplayOrder = 2, IsEnabled = true },
             new AzureBuddy.Data.Entities.WorkItemStateConfiguration { WorkItemType = "Bug", StateName = "Closed", DisplayOrder = 3, IsEnabled = true });
         await dbContext.SaveChangesAsync();
-        var stateConfigService = new WorkItemStateConfigService(dbContext);
+        var stateConfigService = new WorkItemStateConfigService(dbContext, new MemoryCache(new MemoryCacheOptions()));
 
         var adoClient = new FakeAdoClient();
         adoClient.GetWorkItemsBehavior = (_, ids, _) =>
@@ -87,7 +91,7 @@ public class UpdateItemFlowTests
     {
         // Nothing configured at all for "Feature" - validation has nothing to check against, so the
         // request proceeds and Azure DevOps itself is the only gate, same as before this feature existed.
-        var stateConfigService = new WorkItemStateConfigService(NewDbContext());
+        var stateConfigService = new WorkItemStateConfigService(NewDbContext(), new MemoryCache(new MemoryCacheOptions()));
 
         var adoClient = new FakeAdoClient();
         adoClient.GetWorkItemsBehavior = (_, ids, _) =>

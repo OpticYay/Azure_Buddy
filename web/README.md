@@ -9,9 +9,11 @@ This project was generated using [Angular CLI](https://github.com/angular/angula
 Two things need to line up before this app can talk to the backend:
 
 1. **The API must be running and CORS-configured for this app's origin.** From the repo root:
+
    ```bash
    dotnet run --project src/AzureBuddy.Api --launch-profile http
    ```
+
    Note the port it prints ("Now listening on: ..."). The `http` launch profile in `src/AzureBuddy.Api/Properties/launchSettings.json` uses port 5013; running `dotnet run` without a profile falls back to ASP.NET Core's own default (5000), so always check the actual console output rather than assuming.
    The API's `Program.cs` allows CORS requests from `http://localhost:4200` by default (see the `Cors:AllowedOrigins` config section) - if you serve this app from a different port/host, add it there.
 

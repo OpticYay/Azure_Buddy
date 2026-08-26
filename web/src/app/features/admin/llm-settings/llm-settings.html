@@ -1,7 +1,9 @@
 <div class="page">
   <header class="page__head">
     <h1>Model</h1>
-    <p class="page__sub">Which LLM provider Buddy uses to answer, and its fallback if the primary fails.</p>
+    <p class="page__sub">
+      Which LLM provider Buddy uses to answer, and its fallback if the primary fails.
+    </p>
   </header>
 
   @if (loading()) {
@@ -14,7 +16,8 @@
         <!-- ── Saved state: read-only, Gemini key masked ─────────────────────────────────────── -->
         @if (!settings()?.isStoredInDatabase) {
           <p class="notice" [@popIn]>
-            Running on the deployment's default configuration - nothing has been saved from this screen yet.
+            Running on the deployment's default configuration - nothing has been saved from this
+            screen yet.
           </p>
         }
 
@@ -63,7 +66,9 @@
         }
 
         <div class="actions">
-          <button type="button" class="btn btn--primary" (click)="startEditing()">Update model settings</button>
+          <button type="button" class="btn btn--primary" (click)="startEditing()">
+            Update model settings
+          </button>
         </div>
       } @else {
         <!-- ── Edit state: everything pre-fills except the API key, which always starts blank ── -->
@@ -85,7 +90,8 @@
 
           <fieldset class="provider-fields" [hidden]="!geminiFieldsVisible()">
             <legend class="micro">
-              Gemini · {{ form.controls.primaryProvider.value === 'Gemini' ? 'Primary' : 'Secondary' }}
+              Gemini ·
+              {{ form.controls.primaryProvider.value === 'Gemini' ? 'Primary' : 'Secondary' }}
             </legend>
 
             <label class="field">
@@ -123,7 +129,8 @@
 
           <fieldset class="provider-fields" [hidden]="!ollamaFieldsVisible()">
             <legend class="micro">
-              Ollama · {{ form.controls.primaryProvider.value === 'Ollama' ? 'Primary' : 'Secondary' }}
+              Ollama ·
+              {{ form.controls.primaryProvider.value === 'Ollama' ? 'Primary' : 'Secondary' }}
             </legend>
 
             <label class="field">
@@ -161,7 +168,9 @@
             <button type="submit" class="btn btn--primary" [disabled]="saving()">
               {{ saving() ? 'Saving…' : 'Save' }}
             </button>
-            <button type="button" class="btn" (click)="cancelEditing()" [disabled]="saving()">Cancel</button>
+            <button type="button" class="btn" (click)="cancelEditing()" [disabled]="saving()">
+              Cancel
+            </button>
           </div>
         </form>
       }

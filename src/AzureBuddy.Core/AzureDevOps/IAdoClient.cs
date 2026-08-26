@@ -42,4 +42,18 @@ public interface IAdoClient
     /// <summary>Lightweight call used by "test connection": lists a page of projects, which requires a
     /// valid PAT with at least read access but doesn't mutate anything.</summary>
     Task<bool> TestConnectionAsync(AdoConnectionContext connection, CancellationToken cancellationToken = default);
+
+    /// <summary>Fetches ONE work item with $expand=all, which is the only way to get its relations
+    /// (links) and attachments back - the batch GetWorkItemsAsync above never requests them. Kept as a
+    /// separate method rather than a parameter on GetWorkItemsAsync so the existing batch path (and its
+    /// callers/tests) can't regress.</summary>
+    Task<WorkItem?> GetWorkItemAsync(AdoConnectionContext connection, int id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves a free-text name/email to Azure DevOps identities via the account-wide Identities API
+    /// (a different host than every other call here - see AdoOptions.IdentityBaseUrl - and NOT scoped to
+    /// this connection's project). Requires the PAT to carry the vso.identity scope; many PATs won't, so
+    /// callers (AdoIdentityResolver) must be ready to catch a 401/403 and fall back to a WIQL-based search.
+    /// </summary>
+    Task<IReadOnlyList<ResolvedIdentity>> SearchIdentitiesAsync(AdoConnectionContext connection, string filterValue, CancellationToken cancellationToken = default);
 }

@@ -50,7 +50,12 @@ export class Login {
       },
       error: (err: HttpErrorResponse) => {
         this.isSubmitting.set(false);
-        this.errorMessage.set(extractApiErrorMessage(err.error, 'Login failed. Please check your credentials and try again.'));
+        this.errorMessage.set(
+          extractApiErrorMessage(
+            err.error,
+            'Login failed. Please check your credentials and try again.',
+          ),
+        );
       },
     });
   }

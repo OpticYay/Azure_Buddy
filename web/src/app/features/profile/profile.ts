@@ -1,5 +1,11 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
-import { AbstractControl, FormBuilder, ReactiveFormsModule, ValidationErrors, Validators } from '@angular/forms';
+import {
+  AbstractControl,
+  FormBuilder,
+  ReactiveFormsModule,
+  ValidationErrors,
+  Validators,
+} from '@angular/forms';
 import { Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 
@@ -159,7 +165,9 @@ export class Profile implements OnInit {
         // Only fall back to the generic banner when nothing could be pinned to a specific field -
         // otherwise the field-level message already covers it and a duplicate banner is just noise.
         this.passwordError.set(
-          Object.keys(fieldErrors).length > 0 ? null : extractApiErrorMessage(err.error, 'Could not change your password.'),
+          Object.keys(fieldErrors).length > 0
+            ? null
+            : extractApiErrorMessage(err.error, 'Could not change your password.'),
         );
       },
     });

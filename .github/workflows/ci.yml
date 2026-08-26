@@ -2,9 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
-    branches: [main]
 
 jobs:
   backend:
@@ -20,11 +18,22 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
       - name: Restore
         run: dotnet restore AzureBuddy.slnx
 
       - name: Build
         run: dotnet build AzureBuddy.slnx --no-restore --configuration Release
+
+      - name: Format check
+        run: dotnet format AzureBuddy.slnx --verify-no-changes --no-restore
 
       # The test suite runs against a real MySQL database via Testcontainers (see
       # CustomWebApplicationFactory/SharedMySqlContainer), not EF Core's InMemory provider - InMemory
@@ -34,10 +43,22 @@ jobs:
       # here - the container is started by the test process itself on first use. IAdoClient is still
       # swapped for a fake, so no real Azure DevOps org or secrets are required either.
       - name: Test
-        run: dotnet test AzureBuddy.slnx --no-build --configuration Release --logger "console;verbosity=normal"
+        run: >
+          dotnet test AzureBuddy.slnx --no-build --configuration Release
+          --logger "console;verbosity=normal"
+          --collect:"XPlat Code Coverage"
+          --results-directory ./coverage
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-coverage
+          path: coverage
+          retention-days: 14
 
   frontend:
-    name: Frontend build
+    name: Frontend build & test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -55,9 +76,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
       - name: Build
         run: npm run build
 
-      # `ng test` (Karma/Chrome) isn't wired into this job - there's no karma.conf.js/CI browser launcher
-      # configured yet and only the CLI-generated app.spec.ts exists today. Add a headless-Chrome step
-      # here once there's meaningful component test coverage worth running on every push.
+      - name: Test
+        run: npm test

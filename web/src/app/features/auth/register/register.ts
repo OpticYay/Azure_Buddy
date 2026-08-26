@@ -43,15 +43,19 @@ export class Register {
 
     const { email, password, displayName } = this.form.getRawValue();
 
-    this.auth.register({ email: email!, password: password!, displayName: displayName! }).subscribe({
-      next: () => this.router.navigateByUrl('/chat'),
-      error: (err: HttpErrorResponse) => {
-        this.isSubmitting.set(false);
-        // Registration can fail for several distinct reasons at once (weak password AND duplicate
-        // email, say) - the backend returns all of them, and extractApiErrorMessage joins them all
-        // rather than showing just the first.
-        this.errorMessage.set(extractApiErrorMessage(err.error, 'Registration failed. Please try again.'));
-      },
-    });
+    this.auth
+      .register({ email: email!, password: password!, displayName: displayName! })
+      .subscribe({
+        next: () => this.router.navigateByUrl('/chat'),
+        error: (err: HttpErrorResponse) => {
+          this.isSubmitting.set(false);
+          // Registration can fail for several distinct reasons at once (weak password AND duplicate
+          // email, say) - the backend returns all of them, and extractApiErrorMessage joins them all
+          // rather than showing just the first.
+          this.errorMessage.set(
+            extractApiErrorMessage(err.error, 'Registration failed. Please try again.'),
+          );
+        },
+      });
   }
 }

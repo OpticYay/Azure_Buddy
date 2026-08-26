@@ -55,6 +55,7 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         AdoNotConfiguredException ex => (StatusCodes.Status400BadRequest, new ApiError("ado_not_configured", ex.Message)),
         AdoApiException ex => (StatusCodes.Status502BadGateway, new ApiError("ado_api_error", ex.Message)),
         ChatCompletionProviderException => (StatusCodes.Status502BadGateway, new ApiError("llm_provider_unavailable", "All configured AI providers failed to respond. Please try again shortly.")),
+        LlmNotConfiguredException ex => (StatusCodes.Status503ServiceUnavailable, new ApiError("llm_not_configured", ex.Message)),
         _ => (StatusCodes.Status500InternalServerError, new ApiError("unexpected_error", "An unexpected error occurred. Please try again or contact support if this persists."))
     };
 }

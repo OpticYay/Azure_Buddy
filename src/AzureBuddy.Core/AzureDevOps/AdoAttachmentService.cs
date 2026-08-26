@@ -1,11 +1,10 @@
+using System.Net;
 using Microsoft.Extensions.Logging;
 
 namespace AzureBuddy.Core.AzureDevOps;
 
 public sealed class AdoAttachmentService : IAdoAttachmentService
 {
-    private const string EvidencePlaceholder = "<b>Evidence:</b> Not provided";
-
     private readonly IAdoClient _adoClient;
     private readonly ILogger<AdoAttachmentService> _logger;
 
@@ -15,11 +14,33 @@ public sealed class AdoAttachmentService : IAdoAttachmentService
         _logger = logger;
     }
 
-    public async Task<string> AttachScreenshotAsync(
+    // Recognized purely to preserve AttachScreenshotAsync's existing behaviour (always embeds an <img>) -
+    // every caller of that method today only ever sends what message-composer.html's accept="image/*"
+    // let through. New chat-attachment callers go through AttachFileAsync directly with a real
+    // Content-Type instead of relying on this inference.
+    private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"
+    };
+
+    public Task<string> AttachScreenshotAsync(
         AdoConnectionContext connection,
         int workItemId,
         string fileName,
         byte[] content,
+        CancellationToken cancellationToken = default)
+    {
+        var contentType = ImageExtensions.Contains(Path.GetExtension(fileName)) ? "image/png" : "application/octet-stream";
+        return AttachFileAsync(connection, workItemId, fileName, content, contentType, "Screenshot attached via chat", cancellationToken);
+    }
+
+    public async Task<string> AttachFileAsync(
+        AdoConnectionContext connection,
+        int workItemId,
+        string fileName,
+        byte[] content,
+        string contentType,
+        string comment,
         CancellationToken cancellationToken = default)
     {
         var attachment = await _adoClient.CreateAttachmentAsync(connection, fileName, content, cancellationToken);
@@ -31,13 +52,14 @@ public sealed class AdoAttachmentService : IAdoAttachmentService
         await _adoClient.UpdateWorkItemAsync(
             connection,
             workItemId,
-            new[] { AdoRelationOps.AttachedFileLink(attachment.Url, "Screenshot attached via chat") },
+            new[] { AdoRelationOps.AttachedFileLink(attachment.Url, comment) },
             cancellationToken);
 
         // Everything from here is a best-effort UX nicety layered on top of the attachment that
         // already succeeded above - failures are logged, never thrown, so a work item type that's
         // missing a field (e.g. no ReproSteps on a Task) can't turn a successful attach into an error.
-        var evidenceHtml = BuildEvidenceHtml(attachment.Url);
+        var isImage = contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+        var evidenceHtml = BuildEvidenceHtml(attachment.Url, fileName, isImage);
         await TryEmbedInDescriptionAsync(connection, workItemId, evidenceHtml, cancellationToken);
 
         // Always post the full evidence (not just a "see above" pointer) as a comment, regardless of
@@ -51,9 +73,15 @@ public sealed class AdoAttachmentService : IAdoAttachmentService
         return attachment.Url;
     }
 
-    private static string BuildEvidenceHtml(string attachmentUrl) =>
-        "<b>Evidence:</b> Screenshot attached - see Attachments tab.<br>" +
-        $"<img src=\"{attachmentUrl}\" alt=\"Screenshot evidence\" style=\"max-width:600px\" />";
+    // fileName is user-supplied (the name they chose to save the file as) and lands verbatim inside an
+    // <a> element - not HTML-encoding it would let a filename like "<script>.pdf" inject markup into the
+    // work item's own Description/ReproSteps/History, all of which render as HTML in the ADO UI.
+    private static string BuildEvidenceHtml(string attachmentUrl, string fileName, bool isImage) =>
+        isImage
+            ? "<b>Evidence:</b> Screenshot attached - see Attachments tab.<br>" +
+              $"<img src=\"{attachmentUrl}\" alt=\"Screenshot evidence\" style=\"max-width:600px\" />"
+            : "<b>Evidence:</b> File attached - see Attachments tab.<br>" +
+              $"<a href=\"{attachmentUrl}\">{WebUtility.HtmlEncode(fileName)}</a>";
 
     /// <summary>
     /// Tries to embed the screenshot inline in whichever body-like HTML field this work item type
@@ -76,8 +104,8 @@ public sealed class AdoAttachmentService : IAdoAttachmentService
             ? (AdoFields.ReproSteps, item.ReproSteps)
             : (AdoFields.Description, item?.Description ?? string.Empty);
 
-        var updated = current.Contains(EvidencePlaceholder)
-            ? current.Replace(EvidencePlaceholder, evidenceHtml)
+        var updated = current.Contains(BugDescriptionTemplate.EvidencePlaceholder)
+            ? current.Replace(BugDescriptionTemplate.EvidencePlaceholder, evidenceHtml)
             : string.IsNullOrEmpty(current)
                 ? evidenceHtml
                 : $"{current}<br><br>{evidenceHtml}";

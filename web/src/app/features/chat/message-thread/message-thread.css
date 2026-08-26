@@ -7,10 +7,39 @@
 }
 
 .thread {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
+}
+
+/* Floats above the log/composer boundary rather than taking up flex flow space, since it only
+   appears intermittently (see MessageThread.hasUnseenMessages()) and shouldn't shift the composer
+   up and down as it comes and goes. */
+.jump-latest {
+  position: absolute;
+  bottom: var(--space-md);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px var(--space-md);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-full, 999px);
+  background: var(--accent);
+  color: var(--ink-900);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  box-shadow: var(--shadow-float, 0 4px 16px rgba(0, 0, 0, 0.2));
+  z-index: 1;
+}
+
+.jump-latest:hover {
+  background: var(--accent-lift);
+  border-color: var(--accent-lift);
+  transform: translateX(-50%) translateY(-2px);
 }
 
 .log {
@@ -41,7 +70,7 @@
   font-size: var(--t-micro);
   letter-spacing: var(--track-micro);
   text-transform: uppercase;
-  color: var(--ink-300);
+  color: var(--text-muted);
 }
 
 .state--fail {
@@ -54,7 +83,7 @@
 .opener {
   margin: auto 0;
   padding-left: var(--space-lg);
-  border-left: 2px solid var(--brass);
+  border-left: 2px solid var(--accent);
 }
 
 .opener__lead {
@@ -64,7 +93,7 @@
   font-weight: 700;
   font-size: var(--t-display);
   letter-spacing: -0.02em;
-  color: var(--ink-900);
+  color: var(--text);
 }
 
 .opener__hint {
@@ -86,7 +115,7 @@
   border: 1px solid var(--rule-strong);
   border-radius: var(--r-sm);
   background: var(--surface);
-  color: var(--ink-700);
+  color: var(--text-soft);
   font-size: var(--t-sm);
   text-align: left;
 }
@@ -94,14 +123,14 @@
 .starter::before {
   content: '›';
   margin-right: var(--space-sm);
-  color: var(--brass);
+  color: var(--accent);
   font-weight: 600;
 }
 
 .starter:hover {
-  border-color: var(--brass);
-  background: var(--brass-wash);
-  color: var(--ink-900);
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  color: var(--text);
   transform: translateY(-1px);
 }
 

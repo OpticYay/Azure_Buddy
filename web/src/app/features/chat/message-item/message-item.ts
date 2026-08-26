@@ -3,6 +3,7 @@ import { DatePipe } from '@angular/common';
 
 import { DisplayMessage } from '../../../core/models/display-message.model';
 import { MarkdownLitePipe } from '../../../shared/markdown-lite.pipe';
+import { isWorkItemIdColumn, workItemIdCellUrl } from '../../../shared/work-item-id-column';
 
 // This renders as a typed log entry rather than a chat bubble: the backend tags every message with a
 // real type (Text, Table, Confirmation, Error - see ChatMessageType), and the most valuable of those
@@ -55,13 +56,10 @@ export class MessageItem {
    * the ID column and the value is a whole number - so a title that happens to be numeric doesn't
    * get turned into a broken link. */
   cellWorkItemUrl(header: string, cellValue: string): string | null {
-    if (header.trim().toUpperCase() !== 'ID' || !/^\d+$/.test(cellValue.trim())) {
-      return null;
-    }
-    return this.workItemUrl(Number(cellValue));
+    return workItemIdCellUrl(header, cellValue, this.adoWorkItemBaseUrl());
   }
 
   isIdColumn(header: string): boolean {
-    return header.trim().toUpperCase() === 'ID';
+    return isWorkItemIdColumn(header);
   }
 }

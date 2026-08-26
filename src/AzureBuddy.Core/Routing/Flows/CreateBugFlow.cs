@@ -32,25 +32,11 @@ public sealed class CreateBugFlow
     {
         var connection = _connectionAccessor.Require();
 
-        var parentIds = await _adoClient.QueryWiqlAsync(
-            connection,
-            WiqlQueryBuilder.SearchByTitle(extracted.ParentSearchTerm),
-            cancellationToken);
-
-        if (parentIds.Count == 0)
-        {
-            // Same widening the agent's search tool does: the extracted parent term is a paraphrase of
-            // the user's sentence, so it often isn't a contiguous substring of the real title. Without
-            // this, every such case fell through to the (slower) agent purely on word order.
-            var words = WiqlQueryBuilder.SearchWords(extracted.ParentSearchTerm);
-            if (words.Count > 0)
-            {
-                parentIds = await _adoClient.QueryWiqlAsync(
-                    connection,
-                    WiqlQueryBuilder.SearchByTitleWords(words),
-                    cancellationToken);
-            }
-        }
+        // Two-stage search: try the phrase as typed first, and only if that finds nothing, widen to
+        // matching each word independently - the extracted parent term is a paraphrase of the user's
+        // sentence, so it often isn't a contiguous substring of the real title. Same widening the
+        // agent's search tool does (see AdoWorkItemQueries.SearchIdsByTitleAsync).
+        var parentIds = await AdoWorkItemQueries.SearchIdsByTitleAsync(_adoClient, connection, extracted.ParentSearchTerm, cancellationToken);
 
         if (parentIds.Count == 0)
         {
@@ -117,21 +103,13 @@ public sealed class CreateBugFlow
         var description = BuildDescriptionHtml(extracted);
         var title = $"[Bug] - {extracted.Title}";
 
-        var ops = new List<JsonPatchOperation>
-        {
-            JsonPatchOperation.Add($"/fields/{AdoFields.Title}", title),
-            JsonPatchOperation.Add($"/fields/{AdoFields.ReproSteps}", description),
-            AdoRelationOps.ParentLink($"{connection.OrganizationUrl.TrimEnd('/')}/{connection.Project}/_apis/wit/workItems/{parentId}")
-        };
-
         var priority = !string.IsNullOrEmpty(extracted.Priority)
             ? extracted.Priority
             : extracted.IsUrgent ? DefaultUrgentPriority : string.Empty;
-        if (!string.IsNullOrEmpty(priority)) ops.Add(JsonPatchOperation.Add($"/fields/{AdoFields.Priority}", priority));
-        if (!string.IsNullOrEmpty(extracted.Severity)) ops.Add(JsonPatchOperation.Add($"/fields/{AdoFields.Severity}", extracted.Severity));
-        if (!string.IsNullOrEmpty(extracted.AreaPath)) ops.Add(JsonPatchOperation.Add($"/fields/{AdoFields.AreaPath}", extracted.AreaPath));
-        if (!string.IsNullOrEmpty(extracted.IterationPath)) ops.Add(JsonPatchOperation.Add($"/fields/{AdoFields.IterationPath}", extracted.IterationPath));
-        if (!string.IsNullOrEmpty(extracted.AssignedTo)) ops.Add(JsonPatchOperation.Add($"/fields/{AdoFields.AssignedTo}", extracted.AssignedTo));
+
+        var ops = BugCreationRequestBuilder.BuildOps(
+            connection, title, description, parentId.ToString(),
+            priority, extracted.Severity, extracted.AreaPath, extracted.IterationPath, extracted.AssignedTo);
 
         try
         {
@@ -144,20 +122,15 @@ public sealed class CreateBugFlow
         }
     }
 
-    /// <summary>Mirrors the n8n "Build Bug Payload" Code node's HTML template exactly: no literal
-    /// newlines, &lt;br&gt;/&lt;b&gt; tags only.</summary>
+    /// <summary>Mirrors the n8n "Build Bug Payload" Code node's HTML template exactly - see
+    /// <see cref="BugDescriptionTemplate"/> for the shared shape this must stay byte-compatible with.</summary>
     private static string BuildDescriptionHtml(ExtractedIntent extracted)
     {
         var steps = extracted.ReproSteps.Count > 0
             ? string.Join("<br>", extracted.ReproSteps.Select((s, i) => $"{i + 1}. {s}"))
-            : "Not provided";
+            : BugDescriptionTemplate.NotProvided;
 
-        return
-            $"<b>Bug description:</b> {extracted.Title}<br><br>" +
-            $"<b>Steps to reproduce:</b><br>{steps}<br><br>" +
-            $"<b>Expected result:</b> {(string.IsNullOrEmpty(extracted.ExpectedResult) ? "Not provided" : extracted.ExpectedResult)}<br><br>" +
-            $"<b>Actual result:</b> {(string.IsNullOrEmpty(extracted.ActualResult) ? "Not provided" : extracted.ActualResult)}<br><br>" +
-            $"<b>Evidence:</b> {(string.IsNullOrEmpty(extracted.Evidence) ? "Not provided" : extracted.Evidence)}<br><br>" +
-            $"<b>Environment:</b> {(string.IsNullOrEmpty(extracted.Environment) ? "Not provided" : extracted.Environment)}";
+        return BugDescriptionTemplate.Build(
+            extracted.Title, steps, extracted.ExpectedResult, extracted.ActualResult, extracted.Evidence, extracted.Environment);
     }
 }

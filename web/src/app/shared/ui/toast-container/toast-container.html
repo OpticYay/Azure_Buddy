@@ -6,7 +6,16 @@
 -->
 <div class="toast-stack">
   @for (toast of toastService.toasts(); track toast.id) {
-    <div class="toast" [class]="toast.kind" [@toastSlide] (click)="toastService.dismiss(toast.id)">
+    <div
+      class="toast"
+      [class]="toast.kind"
+      [@toastSlide]
+      role="button"
+      tabindex="0"
+      (click)="toastService.dismiss(toast.id)"
+      (keydown.enter)="toastService.dismiss(toast.id)"
+      (keydown.space)="toastService.dismiss(toast.id)"
+    >
       {{ toast.message }}
     </div>
   }

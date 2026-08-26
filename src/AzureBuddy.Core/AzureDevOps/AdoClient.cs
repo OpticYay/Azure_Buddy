@@ -29,6 +29,7 @@ public sealed class AdoClient : IAdoClient
         public const string WorkItems = "_apis/wit/workitems";
         public const string Attachments = "_apis/wit/attachments";
         public const string WorkItemTypes = "_apis/wit/workitemtypes";
+        public const string Identities = "_apis/identities";
     }
 
     private readonly HttpClient _httpClient;
@@ -128,8 +129,32 @@ public sealed class AdoClient : IAdoClient
         // A minimal, side-effect-free call: listing work item types for the configured project only
         // succeeds if the org/project exist and the PAT has at least read access.
         var url = BuildUrl(connection, Paths.WorkItemTypes);
-        var response = await SendAsync(connection, () => new HttpRequestMessage(HttpMethod.Get, url), cancellationToken);
+        using var response = await SendAsync(connection, () => new HttpRequestMessage(HttpMethod.Get, url), cancellationToken);
         return response.IsSuccessStatusCode;
+    }
+
+    public async Task<WorkItem?> GetWorkItemAsync(AdoConnectionContext connection, int id, CancellationToken cancellationToken = default)
+    {
+        var url = BuildUrl(connection, $"{Paths.WorkItems}/{id}?$expand=all");
+        using var response = await SendAsync(connection, () => new HttpRequestMessage(HttpMethod.Get, url), cancellationToken);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        return await ReadOrThrowAsync<WorkItem>(response, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ResolvedIdentity>> SearchIdentitiesAsync(AdoConnectionContext connection, string filterValue, CancellationToken cancellationToken = default)
+    {
+        var url = BuildAccountUrl(connection, $"{Paths.Identities}?searchFilter=General&filterValue={Uri.EscapeDataString(filterValue)}");
+        var response = await SendAsync(connection, () => new HttpRequestMessage(HttpMethod.Get, url), cancellationToken);
+        var result = await ReadOrThrowAsync<IdentitySearchResponse>(response, cancellationToken);
+
+        return result.Value
+            .Select(i => new ResolvedIdentity(i.Id, i.ProviderDisplayName, i.Properties?.Account?.Value ?? i.ProviderDisplayName))
+            .ToList();
     }
 
     private Task<HttpResponseMessage> SendJsonPatchAsync(
@@ -169,28 +194,48 @@ public sealed class AdoClient : IAdoClient
         return $"{orgUrl}/{connection.Project}/{relativePath}{separator}api-version={_options.ApiVersion}";
     }
 
+    /// <summary>Builds a URL against the account-wide Identities host (AdoOptions.IdentityBaseUrl),
+    /// NOT the project-scoped org URL BuildUrl above uses - the Identities API lives on a different host
+    /// entirely (vssps.dev.azure.com) and has no concept of "project". The org name is the last path
+    /// segment of the caller's OrganizationUrl (e.g. "https://dev.azure.com/myorg" -> "myorg").</summary>
+    private string BuildAccountUrl(AdoConnectionContext connection, string relativePath)
+    {
+        var orgName = connection.OrganizationUrl.TrimEnd('/').Split('/').Last();
+        var separator = relativePath.Contains('?') ? "&" : "?";
+        return $"{_options.IdentityBaseUrl.TrimEnd('/')}/{orgName}/{relativePath}{separator}api-version={_options.ApiVersion}";
+    }
+
     private async Task<T> ReadOrThrowAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
     {
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        using (response)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        if (!response.IsSuccessStatusCode)
-        {
-            // Deliberately not logging the request's Authorization header (SendAsync never adds it to
-            // any log-visible object) - only the URL/status/body, so PATs never end up in logs.
-            _logger.LogWarning("Azure DevOps call to {Url} returned {Status}: {Body}", response.RequestMessage?.RequestUri, response.StatusCode, body);
-            throw new AdoApiException($"Azure DevOps returned {(int)response.StatusCode}: {body}");
-        }
+            if (!response.IsSuccessStatusCode)
+            {
+                // Deliberately not logging the request's Authorization header (SendAsync never adds it
+                // to any log-visible object) - only the URL/status/body, so PATs never end up in logs.
+                // The body itself is truncated before it reaches either the log or the client-facing
+                // exception message (surfaced verbatim by GlobalExceptionHandler as ado_api_error) -
+                // ADO error bodies can include project/org metadata.
+                var truncated = Truncate(body);
+                _logger.LogWarning("Azure DevOps call to {Url} returned {Status}: {Body}", response.RequestMessage?.RequestUri, response.StatusCode, truncated);
+                throw new AdoApiException($"Azure DevOps returned {(int)response.StatusCode}: {truncated}", statusCode: response.StatusCode);
+            }
 
-        try
-        {
-            return JsonSerializer.Deserialize<T>(body, JsonOptions)
-                   ?? throw new AdoApiException("Azure DevOps returned an empty response body.");
-        }
-        catch (JsonException ex)
-        {
-            throw new AdoApiException($"Failed to parse Azure DevOps response: {body}", ex);
+            try
+            {
+                return JsonSerializer.Deserialize<T>(body, JsonOptions)
+                       ?? throw new AdoApiException("Azure DevOps returned an empty response body.");
+            }
+            catch (JsonException ex)
+            {
+                throw new AdoApiException($"Failed to parse Azure DevOps response: {Truncate(body)}", ex);
+            }
         }
     }
+
+    private static string Truncate(string body) => body.Length > 500 ? body[..500] + "... [truncated]" : body;
 }
 
 /// <summary>Raised when an Azure DevOps call fails or returns an unparseable response, after retries
@@ -198,7 +243,13 @@ public sealed class AdoClient : IAdoClient
 /// and reporting the actual error to the user rather than claiming success.</summary>
 public sealed class AdoApiException : Exception
 {
-    public AdoApiException(string message, Exception? innerException = null) : base(message, innerException)
+    /// <summary>Null when this was raised for a reason other than an HTTP error response (e.g. an
+    /// unparseable body) - populated whenever ADO itself returned a non-success status, so callers like
+    /// AdoIdentityResolver can distinguish "scope missing" (401/403) from every other failure.</summary>
+    public System.Net.HttpStatusCode? StatusCode { get; }
+
+    public AdoApiException(string message, Exception? innerException = null, System.Net.HttpStatusCode? statusCode = null) : base(message, innerException)
     {
+        StatusCode = statusCode;
     }
 }

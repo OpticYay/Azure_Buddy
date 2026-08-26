@@ -5,7 +5,11 @@
   mechanisms (Angular-driven width, CSS-driven opacity) reading the same collapsed() signal, tuned
   to the same duration so they land together.
 -->
-<aside class="rail" [class.is-collapsed]="collapsed()" [@sidebarWidth]="collapsed() ? 'collapsed' : 'expanded'">
+<aside
+  class="rail"
+  [class.is-collapsed]="collapsed()"
+  [@sidebarWidth]="collapsed() ? 'collapsed' : 'expanded'"
+>
   <div class="rail__head">
     @if (canToggle()) {
       <button
@@ -63,23 +67,33 @@
               />
             </div>
           } @else {
-            <a
-              class="session"
-              [routerLink]="['/chat', session.id]"
-              routerLinkActive="is-active"
-              [attr.title]="collapsed() ? session.title : null"
-            >
-              <!-- Both forms are always rendered and CSS decides which is visible. That's what lets a
-                   media query collapse the rail on a narrow screen without the component having to
-                   know the viewport width - see the breakpoint at the end of session-list.css. -->
-              <span class="session__initial">{{ initialOf(session.title) }}</span>
-              <span class="session__title label">{{ session.title }}</span>
-              <span class="session__time label">{{ session.updatedAt | date: 'd MMM' }}</span>
+            <!-- A <button> nested inside an <a href> is invalid HTML (interactive-in-interactive) -
+                 browsers and assistive tech handle the resulting click/focus/tab semantics
+                 inconsistently. The rename/delete buttons are siblings of the link instead, both
+                 wrapped in this row div, which is also what lets `rla.isActive` (exported from the
+                 link below) drive the row's highlight without the link itself needing to contain
+                 everything that's highlighted. -->
+            <div class="session" [class.is-active]="rla.isActive">
+              <a
+                #rla="routerLinkActive"
+                class="session__link"
+                [routerLink]="['/chat', session.id]"
+                routerLinkActive
+                [attr.title]="collapsed() ? session.title : null"
+              >
+                <!-- Both forms are always rendered and CSS decides which is visible. That's what lets a
+                     media query collapse the rail on a narrow screen without the component having to
+                     know the viewport width - see the breakpoint at the end of session-list.css. -->
+                <span class="session__initial">{{ initialOf(session.title) }}</span>
+                <span class="session__title label">{{ session.title }}</span>
+                <span class="session__time label">{{ session.updatedAt | date: 'd MMM' }}</span>
+              </a>
               <button
                 type="button"
                 class="session__rename label"
                 title="Rename conversation"
-                (click)="startRename(session, $event)"
+                aria-label="Rename conversation"
+                (click)="startRename(session)"
               >
                 <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
                   <path
@@ -94,12 +108,22 @@
               <button
                 type="button"
                 class="session__remove label"
-                title="Delete conversation"
-                (click)="deleteSession(session, $event)"
+                [class.is-confirming]="confirmingDeleteId() === session.id"
+                [title]="
+                  confirmingDeleteId() === session.id
+                    ? 'Click again to delete'
+                    : 'Delete conversation'
+                "
+                [attr.aria-label]="
+                  confirmingDeleteId() === session.id
+                    ? 'Click again to confirm deleting ' + session.title
+                    : 'Delete conversation'
+                "
+                (click)="deleteSession(session)"
               >
-                ×
+                {{ confirmingDeleteId() === session.id ? '✓' : '×' }}
               </button>
-            </a>
+            </div>
           }
         </li>
       }

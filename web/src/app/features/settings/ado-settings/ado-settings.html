@@ -35,7 +35,12 @@
             spinning ring while in flight, then a check or a cross once the result lands, each with
             [@popIn] so the icon scales in instead of snapping.
           -->
-          <button type="button" class="btn btn--check" (click)="testConnection()" [disabled]="testing()">
+          <button
+            type="button"
+            class="btn btn--check"
+            (click)="testConnection()"
+            [disabled]="testing()"
+          >
             @if (testing()) {
               <span class="spinner" [@popIn] aria-hidden="true"></span>
               Checking
@@ -50,7 +55,12 @@
             }
           </button>
 
-          <button type="button" class="btn btn--danger" (click)="confirmDelete()" [disabled]="deleting()">
+          <button
+            type="button"
+            class="btn btn--danger"
+            (click)="confirmDelete()"
+            [disabled]="deleting()"
+          >
             {{ deleting() ? 'Removing' : 'Remove' }}
           </button>
         </div>
@@ -69,7 +79,11 @@
         <form [formGroup]="form" (ngSubmit)="save()">
           <label class="field">
             <span class="micro">Organization URL</span>
-            <input type="url" formControlName="organizationUrl" placeholder="https://dev.azure.com/your-org" />
+            <input
+              type="url"
+              formControlName="organizationUrl"
+              placeholder="https://dev.azure.com/your-org"
+            />
             @if (form.controls.organizationUrl.touched && form.controls.organizationUrl.invalid) {
               <span class="field__error">Enter a URL starting with http:// or https://</span>
             }
@@ -85,14 +99,24 @@
 
           <label class="field">
             <span class="micro">Personal access token</span>
-            <input type="password" formControlName="personalAccessToken" placeholder="Paste a token" autocomplete="off" />
-            @if (form.controls.personalAccessToken.touched && form.controls.personalAccessToken.invalid) {
+            <input
+              type="password"
+              formControlName="personalAccessToken"
+              placeholder="Paste a token"
+              autocomplete="off"
+            />
+            @if (
+              form.controls.personalAccessToken.touched && form.controls.personalAccessToken.invalid
+            ) {
               <span class="field__error">Paste a token.</span>
             }
             <!-- Not a frontend choice: the API stores the token encrypted and never decrypts it to
                  compare or reuse, so it only accepts a complete set of settings. See save() in
                  ado-settings.ts. -->
-            <span class="field__note">Re-enter the token on every save — it's stored encrypted and can't be read back.</span>
+            <span class="field__note"
+              >Re-enter the token on every save — it's stored encrypted and can't be read
+              back.</span
+            >
           </label>
 
           @if (saveError()) {
@@ -104,7 +128,9 @@
               {{ saving() ? 'Saving' : 'Save connection' }}
             </button>
             @if (settings()?.isConfigured) {
-              <button type="button" class="btn" (click)="cancelEditing()" [disabled]="saving()">Cancel</button>
+              <button type="button" class="btn" (click)="cancelEditing()" [disabled]="saving()">
+                Cancel
+              </button>
             }
           </div>
         </form>

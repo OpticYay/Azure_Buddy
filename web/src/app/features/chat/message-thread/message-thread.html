@@ -5,11 +5,20 @@
     already-loaded conversations read as a cross-fade, even though this element itself never leaves
     the DOM - the component instance is reused across session switches.
   -->
-  <div class="log" #logContainer [@crossFade]="sessionId()">
+  <div
+    class="log"
+    #logContainer
+    [@crossFade]="sessionId()"
+    role="log"
+    aria-live="polite"
+    aria-label="Conversation"
+    [attr.aria-busy]="loading() || isAwaitingReply() ? 'true' : null"
+    (scroll)="onLogScroll()"
+  >
     @if (loading()) {
-      <p class="state">Loading conversation…</p>
+      <p class="state" role="status">Loading conversation…</p>
     } @else if (loadError()) {
-      <p class="state state--fail">{{ loadError() }}</p>
+      <p class="state state--fail" role="alert">{{ loadError() }}</p>
     } @else if (displayMessages().length === 0) {
       <!-- [@openerStagger] cascades the heading, hint and chips in one short sequence (see
            shared/animations.ts) so an empty conversation assembles itself instead of dropping into
@@ -45,6 +54,12 @@
       </div>
     }
   </div>
+
+  @if (hasUnseenMessages()) {
+    <!-- Shown instead of forcibly yanking the scroll position when a reply lands while the user has
+         scrolled up to read earlier history - see MessageThread.scrollToBottom(). -->
+    <button type="button" class="jump-latest" (click)="jumpToLatest()">New messages ↓</button>
+  }
 
   <app-message-composer
     [sessionId]="sessionId()"

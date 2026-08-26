@@ -1,5 +1,4 @@
 using AzureBuddy.Core.AzureDevOps;
-using AzureBuddy.Core.Formatting;
 using AzureBuddy.Core.Intent;
 
 namespace AzureBuddy.Core.Routing.Flows;
@@ -9,12 +8,6 @@ namespace AzureBuddy.Core.Routing.Flows;
 /// <see cref="WorkItemUrgencyRanker"/> rather than left in whatever order ADO returned them.</summary>
 public sealed class ViewBugsFlow
 {
-    private static readonly string[] Fields =
-    {
-        AdoFields.Title, AdoFields.WorkItemType, AdoFields.State,
-        AdoFields.Priority, AdoFields.StartDate, AdoFields.TargetDate, AdoFields.DueDate, AdoFields.FinishDate
-    };
-
     private readonly IAdoClient _adoClient;
     private readonly AdoConnectionContextAccessor _connectionAccessor;
 
@@ -46,19 +39,11 @@ public sealed class ViewBugsFlow
             return FlowResult.Done($"No linked work items found under #{extracted.WorkItemId}.");
         }
 
-        var items = await _adoClient.GetWorkItemsAsync(connection, linkedIds, Fields, cancellationToken);
+        var items = await _adoClient.GetWorkItemsAsync(connection, linkedIds, WorkItemTableBuilder.Fields, cancellationToken);
         var ranked = WorkItemUrgencyRanker.SortByUrgency(items);
 
-        var headers = new[] { "ID", "Title", "Type", "State", "Priority", "Start Date", "Due Date" };
-        var rows = ranked.Select(BuildRow).ToList();
-        var table = MarkdownTableBuilder.Build(headers, rows);
+        var (headers, rows, table) = WorkItemTableBuilder.Build(ranked);
 
         return FlowResult.DoneWithTable($"Work items linked to #{extracted.WorkItemId}, most urgent first:\n\n{table}", headers, rows);
     }
-
-    private static IReadOnlyList<string> BuildRow(WorkItem i) => new[]
-    {
-        i.Id.ToString(), i.Title ?? "", i.WorkItemType ?? "", i.State ?? "",
-        WorkItemUrgencyRanker.FormatPriority(i), WorkItemUrgencyRanker.FormatDate(i.StartDate), WorkItemUrgencyRanker.FormatDate(i.DueDate)
-    };
 }

@@ -1,4 +1,5 @@
 using AzureBuddy.Core.Agent;
+using AzureBuddy.Core.Chat;
 using AzureBuddy.Core.Intent;
 using AzureBuddy.Core.Llm.Models;
 using AzureBuddy.Core.Routing.Flows;
@@ -25,6 +26,7 @@ public sealed class IntentRouter
     private readonly GetPrioritizedWorkItemsFlow _getPrioritizedWorkItemsFlow;
     private readonly IConversationalAgent _agent;
     private readonly IChatHistoryStore _historyStore;
+    private readonly IPendingAttachmentStore _pendingAttachmentStore;
 
     public IntentRouter(
         IntentExtractor intentExtractor,
@@ -34,7 +36,8 @@ public sealed class IntentRouter
         MyItemsFlow myItemsFlow,
         GetPrioritizedWorkItemsFlow getPrioritizedWorkItemsFlow,
         IConversationalAgent agent,
-        IChatHistoryStore historyStore)
+        IChatHistoryStore historyStore,
+        IPendingAttachmentStore pendingAttachmentStore)
     {
         _intentExtractor = intentExtractor;
         _createBugFlow = createBugFlow;
@@ -44,11 +47,24 @@ public sealed class IntentRouter
         _getPrioritizedWorkItemsFlow = getPrioritizedWorkItemsFlow;
         _agent = agent;
         _historyStore = historyStore;
+        _pendingAttachmentStore = pendingAttachmentStore;
     }
 
     public async Task<ChatReply> RouteAsync(string sessionId, string userMessage, CancellationToken cancellationToken = default)
     {
-        var extracted = await _intentExtractor.ExtractAsync(userMessage, cancellationToken);
+        // A pending upload means the user's very next message is about deciding what to do with that
+        // file - classifying it as my_items/create_bug/etc by keyword would be a guess at best. Skipping
+        // straight to the agent lets it read the "[Attached file: ...]" notice below and reason about
+        // which work item (if any) the user names in the same message.
+        var pendingAttachment = await _pendingAttachmentStore.GetAsync(sessionId, cancellationToken);
+        if (pendingAttachment is not null)
+        {
+            userMessage = $"{userMessage}\n\n[Attached file: {pendingAttachment.FileName}]";
+        }
+
+        var extracted = pendingAttachment is not null
+            ? ExtractedIntent.Fallback()
+            : await _intentExtractor.ExtractAsync(userMessage, cancellationToken);
 
         // Loaded exactly once per turn, here - above the fork between the deterministic-flow path and
         // the agent path below - because IntentRouter is the only place that sits above both. AddUserTurn
@@ -108,7 +124,16 @@ public sealed class IntentRouter
 
     /// <summary>Mirrors the n8n "Ensure Non-Empty Reply" Code node - never let a blank/failed model
     /// response reach the user silently. A blank/failed reply is itself an Error-typed message,
-    /// regardless of what type the caller asked for - there's no "empty table" to show.</summary>
+    /// regardless of what type the caller asked for - there's no "empty table" to show.
+    ///
+    /// This is a deliberate choice, not an oversight: AzureBuddyAgent.RespondAsync catches
+    /// ChatCompletionProviderException itself and returns string.Empty (logging at Error level, which is
+    /// what should feed alerting), and IntentExtractor.ExtractAsync does the same for the classification
+    /// call, falling back to ChatIntent.Other. Both mean GlobalExceptionHandler's 502 "llm_provider_unavailable"
+    /// mapping is effectively unreachable from a normal conversational turn - a provider outage always
+    /// surfaces as this in-chat Error message on an ordinary 200, never as a 502. That trade favors chat
+    /// UX (never show the user a raw HTTP error) over an externally-observable outage signal; watch the
+    /// Error-level agent/extractor logs, not response status codes, to detect provider outages.</summary>
     private static ChatReply EnsureNonEmpty(
         string? text,
         ChatMessageType type,

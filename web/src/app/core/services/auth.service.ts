@@ -1,4 +1,4 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, finalize, map, of, shareReplay, tap, throwError } from 'rxjs';
 
@@ -49,7 +49,7 @@ export class AuthService {
   // This field remembers an in-flight refresh call so every 401 can share the SAME one.
   private refreshInFlight$: Observable<AuthTokens> | null = null;
 
-  constructor(private readonly http: HttpClient) {}
+  private readonly http = inject(HttpClient);
 
   register(request: RegisterRequest): Observable<AuthTokens> {
     return this.http
@@ -121,7 +121,9 @@ export class AuthService {
     // makes the de-duplication above work. `finalize` clears refreshInFlight$ once the call settles so
     // the *next* 401, later, correctly starts a new refresh instead of replaying a stale one forever.
     this.refreshInFlight$ = this.http
-      .post<AuthTokens>(`${environment.apiUrl}/api/auth/refresh`, { refreshToken: storedRefreshToken })
+      .post<AuthTokens>(`${environment.apiUrl}/api/auth/refresh`, {
+        refreshToken: storedRefreshToken,
+      })
       .pipe(
         tap((tokens) => this.applySession(tokens)),
         catchError((err) => {

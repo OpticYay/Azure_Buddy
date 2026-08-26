@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using AzureBuddy.Core.Common;
 using AzureBuddy.Data;
 using AzureBuddy.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -48,7 +49,9 @@ public sealed class LlmSettingsService
     /// nothing about actually changed.</summary>
     public async Task LoadFromDatabaseIfPresentAsync(CancellationToken cancellationToken = default)
     {
-        var row = await FindAsync(cancellationToken);
+        var row = await _dbContext.LlmSettings
+            .AsNoTracking()
+            .SingleOrDefaultAsync(s => s.Id == LlmSettings.SingletonId, cancellationToken);
         if (row is not null)
         {
             _settingsProvider.Refresh(BuildEffectiveOptions(row));
@@ -57,7 +60,9 @@ public sealed class LlmSettingsService
 
     public async Task<LlmSettingsView> GetAsync(CancellationToken cancellationToken = default)
     {
-        var row = await FindAsync(cancellationToken);
+        var row = await _dbContext.LlmSettings
+            .AsNoTracking()
+            .SingleOrDefaultAsync(s => s.Id == LlmSettings.SingletonId, cancellationToken);
 
         // No row saved yet - the app is still running on appsettings.json's Llm section (see
         // LlmSettingsProvider's constructor). Show the admin what's ACTUALLY in effect right now
@@ -72,7 +77,7 @@ public sealed class LlmSettingsService
                 PrimaryProvider: primary,
                 UseFallback: current.Providers.Count > 1,
                 current.Gemini.Model, current.Gemini.BaseUrl, current.Gemini.TimeoutSeconds,
-                MaskedGeminiApiKey: MaskKey(current.Gemini.ApiKey),
+                MaskedGeminiApiKey: SecretMasking.Mask(current.Gemini.ApiKey),
                 current.Ollama.Model, current.Ollama.BaseUrl, current.Ollama.NumCtx, current.Ollama.TimeoutSeconds,
                 UpdatedAt: null);
         }
@@ -175,7 +180,7 @@ public sealed class LlmSettingsService
     private LlmSettingsView ToView(LlmSettings row)
     {
         var providers = row.ProvidersCsv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var maskedKey = row.GeminiEncryptedApiKey is null ? null : MaskKey(DecryptSafely(row.GeminiEncryptedApiKey));
+        var maskedKey = row.GeminiEncryptedApiKey is null ? null : SecretMasking.Mask(DecryptSafely(row.GeminiEncryptedApiKey));
 
         return new LlmSettingsView(
             IsStoredInDatabase: true,
@@ -184,20 +189,6 @@ public sealed class LlmSettingsService
             row.GeminiModel, row.GeminiBaseUrl, row.GeminiTimeoutSeconds, maskedKey,
             row.OllamaModel, row.OllamaBaseUrl, row.OllamaNumCtx, row.OllamaTimeoutSeconds,
             row.UpdatedAt);
-    }
-
-    /// <summary>Same masking convention as UserAdoConfigService.MaskPat: last 4 characters visible,
-    /// the rest replaced with bullets. Decrypting only to immediately re-mask is safe here for the
-    /// same reason it's safe there - this is the credential's own owner (an admin) reading it back,
-    /// and the full plaintext still never leaves this method.</summary>
-    private static string MaskKey(string plaintext)
-    {
-        if (string.IsNullOrEmpty(plaintext))
-        {
-            return string.Empty;
-        }
-        var lastFour = plaintext.Length >= 4 ? plaintext[^4..] : plaintext;
-        return new string('•', 8) + lastFour;
     }
 
     private string DecryptSafely(string encrypted)

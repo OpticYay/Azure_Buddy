@@ -1,5 +1,6 @@
 using AzureBuddy.Core.Agent;
 using AzureBuddy.Core.AzureDevOps;
+using AzureBuddy.Core.Chat;
 using AzureBuddy.Core.Intent;
 using AzureBuddy.Core.Llm;
 using AzureBuddy.Core.Llm.Models;
@@ -9,7 +10,9 @@ using AzureBuddy.Core.WorkItemStates;
 using AzureBuddy.Data;
 using AzureBuddy.Tests.Integration;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace AzureBuddy.Tests.Routing;
@@ -98,8 +101,21 @@ public class IntentRouterTests
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        return new WorkItemStateConfigService(new AppDbContext(options));
+        return new WorkItemStateConfigService(new AppDbContext(options), new MemoryCache(new MemoryCacheOptions()));
     }
+
+    private static AdoWorkItemToolset NewToolset(FakeAdoClient adoClient, AdoConnectionContextAccessor connectionAccessor) =>
+        new(
+            adoClient,
+            connectionAccessor,
+            NewStateConfigService(),
+            new AdoIdentityResolver(adoClient),
+            new InMemoryPendingAttachmentStore(Options.Create(new AdoOptions())),
+            new ChatSessionContextAccessor(),
+            new AdoAttachmentService(adoClient, NullLogger<AdoAttachmentService>.Instance));
+
+    private static IPendingAttachmentStore NewPendingAttachmentStore() =>
+        new InMemoryPendingAttachmentStore(Options.Create(new AdoOptions()));
 
     private const string MyItemsWithAdditionalRequestExtraction =
         """{"intent":"my_items","parent_search_term":"","work_item_id":"","title":"","repro_steps":[],"expected_result":"","actual_result":"","evidence":"","environment":"","priority":"","severity":"","area_path":"","iteration_path":"","assigned_to":"","state":"","comment":"","has_additional_request":true}""";
@@ -124,10 +140,10 @@ public class IntentRouterTests
 
         var historyStore = new FakeChatHistoryStore();
         var agentClient = new ScriptedChatClient("Handled both parts of your request.");
-        var toolCatalog = new ToolCatalog(new AdoWorkItemToolset(adoClient, connectionAccessor, NewStateConfigService()));
+        var toolCatalog = new ToolCatalog(NewToolset(adoClient, connectionAccessor));
         var agent = new AzureBuddyAgent(agentClient, historyStore, toolCatalog, NullLogger<AzureBuddyAgent>.Instance);
 
-        var router = new IntentRouter(intentExtractor, null!, null!, null!, myItemsFlow, null!, agent, historyStore);
+        var router = new IntentRouter(intentExtractor, null!, null!, null!, myItemsFlow, null!, agent, historyStore, NewPendingAttachmentStore());
 
         var sessionId = Guid.NewGuid().ToString();
         var reply = await router.RouteAsync(sessionId, "show my open items and also file a bug for the login crash", CancellationToken.None);
@@ -164,7 +180,7 @@ public class IntentRouterTests
 
         var historyStore = new FakeChatHistoryStore();
         var agentClient = new ScriptedChatClient("Here is your summary.");
-        var toolCatalog = new ToolCatalog(new AdoWorkItemToolset(adoClient, connectionAccessor, NewStateConfigService()));
+        var toolCatalog = new ToolCatalog(NewToolset(adoClient, connectionAccessor));
         var agent = new AzureBuddyAgent(agentClient, historyStore, toolCatalog, NullLogger<AzureBuddyAgent>.Instance);
 
         // CreateBugFlow/ViewBugsFlow/UpdateItemFlow are never reached (both turns below classify as
@@ -177,7 +193,8 @@ public class IntentRouterTests
             myItemsFlow,
             getPrioritizedWorkItemsFlow: null!,
             agent,
-            historyStore);
+            historyStore,
+            NewPendingAttachmentStore());
 
         var sessionId = Guid.NewGuid().ToString();
         await router.RouteAsync(sessionId, "show my open work items", CancellationToken.None);
@@ -202,10 +219,10 @@ public class IntentRouterTests
         var myItemsFlow = new MyItemsFlow(adoClient, connectionAccessor);
         var historyStore = new FakeChatHistoryStore();
         var agentClient = new ScriptedChatClient("unused");
-        var toolCatalog = new ToolCatalog(new AdoWorkItemToolset(adoClient, connectionAccessor, NewStateConfigService()));
+        var toolCatalog = new ToolCatalog(NewToolset(adoClient, connectionAccessor));
         var agent = new AzureBuddyAgent(agentClient, historyStore, toolCatalog, NullLogger<AzureBuddyAgent>.Instance);
 
-        var router = new IntentRouter(intentExtractor, null!, null!, null!, myItemsFlow, null!, agent, historyStore);
+        var router = new IntentRouter(intentExtractor, null!, null!, null!, myItemsFlow, null!, agent, historyStore, NewPendingAttachmentStore());
 
         var sessionId = Guid.NewGuid().ToString();
         var reply = await router.RouteAsync(sessionId, "show my open work items", CancellationToken.None);
@@ -235,12 +252,12 @@ public class IntentRouterTests
             Current = new AdoConnectionContext("https://dev.azure.com/org", "Proj", "fake-pat"),
         };
         var myItemsFlow = new MyItemsFlow(adoClient, connectionAccessor);
-        var toolCatalog = new ToolCatalog(new AdoWorkItemToolset(adoClient, connectionAccessor, NewStateConfigService()));
+        var toolCatalog = new ToolCatalog(NewToolset(adoClient, connectionAccessor));
 
         var firstStore = new FakeChatHistoryStore();
         var firstAgentClient = new ScriptedChatClient("unused");
         var firstAgent = new AzureBuddyAgent(firstAgentClient, firstStore, toolCatalog, NullLogger<AzureBuddyAgent>.Instance);
-        var firstRouter = new IntentRouter(intentExtractor, null!, null!, null!, myItemsFlow, null!, firstAgent, firstStore);
+        var firstRouter = new IntentRouter(intentExtractor, null!, null!, null!, myItemsFlow, null!, firstAgent, firstStore, NewPendingAttachmentStore());
 
         var sessionId = Guid.NewGuid().ToString();
         await firstRouter.RouteAsync(sessionId, "show my open work items", CancellationToken.None);
@@ -250,7 +267,7 @@ public class IntentRouterTests
         var secondStore = new FakeChatHistoryStore();
         var secondAgentClient = new ScriptedChatClient("Here is your summary.");
         var secondAgent = new AzureBuddyAgent(secondAgentClient, secondStore, toolCatalog, NullLogger<AzureBuddyAgent>.Instance);
-        var secondRouter = new IntentRouter(intentExtractor, null!, null!, null!, myItemsFlow, null!, secondAgent, secondStore);
+        var secondRouter = new IntentRouter(intentExtractor, null!, null!, null!, myItemsFlow, null!, secondAgent, secondStore, NewPendingAttachmentStore());
 
         await secondRouter.RouteAsync(sessionId, "summarize that", CancellationToken.None);
 

@@ -1,3 +1,4 @@
+using AzureBuddy.Core.Chat;
 using AzureBuddy.Core.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using StackExchange.Redis;
@@ -19,6 +20,7 @@ public static class AgentServiceCollectionExtensions
         if (multiplexer is not null)
         {
             services.AddScoped<IChatHistoryStore, RedisChatHistoryStore>();
+            services.AddSingleton<IPendingAttachmentStore, RedisPendingAttachmentStore>();
         }
         else
         {
@@ -29,8 +31,10 @@ public static class AgentServiceCollectionExtensions
             // IConnectionMultiplexer.
             services.AddSingleton<InMemoryChatWindowCache>();
             services.AddScoped<IChatHistoryStore, InMemoryChatHistoryStore>();
+            services.AddSingleton<IPendingAttachmentStore, InMemoryPendingAttachmentStore>();
         }
 
+        services.AddScoped<ChatSessionContextAccessor>();
         services.AddScoped<AdoWorkItemToolset>();
         services.AddScoped<ToolCatalog>();
         services.AddScoped<IConversationalAgent, AzureBuddyAgent>();

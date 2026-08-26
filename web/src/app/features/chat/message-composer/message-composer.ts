@@ -1,9 +1,22 @@
-import { Component, ElementRef, OnDestroy, ViewChild, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  OnDestroy,
+  ViewChild,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+  untracked,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Observable, map, of, switchMap } from 'rxjs';
+import { Observable, Subscription, map, of, switchMap } from 'rxjs';
 
 import { ChatService } from '../../../core/services/chat.service';
+import { ChatResponse } from '../../../core/models/chat.models';
 import { ChatActivityService } from '../../../core/services/chat-activity.service';
 import { DRAFT_SESSION_KEY, NewChatService } from '../../../core/services/new-chat.service';
 import { extractApiErrorMessage } from '../../../core/models/api-error.model';
@@ -73,8 +86,16 @@ export class MessageComposer implements OnDestroy {
    * Send button - and so the state survives this component being destroyed and rebuilt. A draft
    * (sessionId() null) conversation doesn't have a real id to key by yet, so it uses the same fixed
    * DRAFT_SESSION_KEY every send() call below keys its own tracked request with. */
-  readonly sending = computed(() => this.chatActivity.isWorking(this.sessionId() ?? DRAFT_SESSION_KEY));
+  readonly sending = computed(() =>
+    this.chatActivity.isWorking(this.sessionId() ?? DRAFT_SESSION_KEY),
+  );
   readonly errorMessage = signal<string | null>(null);
+
+  /** The send currently in flight, if any - kept so stop() below has something to unsubscribe from.
+   * Unsubscribing an RxJS Observable mid-request cancels the underlying HttpClient call (aborts the
+   * fetch/XHR), and chat-activity.service's finalize() still runs on unsubscribe, so sending() clears
+   * itself the same way it would for a normal success or error. See §7.7. */
+  private inFlightSubscription: Subscription | null = null;
 
   constructor() {
     // Third piece of state that outlived the conversation it belonged to (see the working indicator
@@ -106,8 +127,23 @@ export class MessageComposer implements OnDestroy {
         this.messageText.set('');
         this.removeAttachment();
         this.errorMessage.set(null);
+        const field = this.textarea?.nativeElement;
+        if (field) {
+          field.style.height = 'auto';
+        }
       });
     });
+  }
+
+  /** Grows the textarea to fit its content as the user types, up to the CSS `max-height` (140px, see
+   * message-composer.css) where `overflow-y: auto` takes back over - a plain `rows="1"` left a long
+   * multi-line draft scrolling inside one visible row instead of growing with it (§7.9). Resetting
+   * height to 'auto' first is what lets scrollHeight shrink back down again after deleting text; without
+   * it scrollHeight only ever reports the tallest the box has ever been. */
+  autoGrow(event: Event): void {
+    const field = event.target as HTMLTextAreaElement;
+    field.style.height = 'auto';
+    field.style.height = `${field.scrollHeight}px`;
   }
 
   onFileSelected(event: Event): void {
@@ -147,6 +183,18 @@ export class MessageComposer implements OnDestroy {
     // createObjectURL gives us a temporary browser-local URL that displays this in-memory File as an
     // <img> src without uploading it anywhere first - purely a local preview.
     this.attachedPreviewUrl.set(URL.createObjectURL(file));
+  }
+
+  /** `<input type="number">` bound via ngModel is handled by Angular's NumberValueAccessor, not the
+   * default string one - it emits a `number` (or `null` when cleared) through `ngModelChange`, never a
+   * string. workItemIdText is typed/treated as a string everywhere else here (`.trim()` in send(),
+   * Number(...) in sendScreenshot()), so writing that number straight into the signal made every send()
+   * call throw a TypeError the instant a screenshot with a work item id was sent - synchronously, inside
+   * the button's click handler, before any HTTP request went out or errorMessage got set. That's why it
+   * looked "stuck": the attachment and typed id just stayed exactly as they were, with no visible
+   * feedback at all. Converting here keeps the signal's contract (always a string) intact everywhere else. */
+  onWorkItemIdChange(value: number | null): void {
+    this.workItemIdText.set(value === null ? '' : String(value));
   }
 
   removeAttachment(): void {
@@ -195,10 +243,69 @@ export class MessageComposer implements OnDestroy {
   send(): void {
     const file = this.attachedFile();
     if (file) {
-      this.sendScreenshot(file);
+      // A filled-in work item id keeps using the original, ADO-specific screenshot path below. Leaving
+      // it blank means the user wants the agent itself to figure out (or ask) where the file goes -
+      // that's the new pending-attachment path, which works for any file type, not just images.
+      if (this.workItemIdText().trim()) {
+        this.sendScreenshot(file);
+      } else {
+        this.sendFileViaAgent(file);
+      }
     } else {
       this.sendText();
     }
+  }
+
+  /** Uploads the attached file into the session's pending-attachment slot, then sends a normal chat
+   * turn - IntentRouter sees the pending upload and routes straight to the agent, whose
+   * attach_file_to_work_item tool picks the file back up once the user names (or is asked to name) a
+   * work item. Mirrors sendText()'s optimistic-UI handling (messageSubmitted/messageFailed) rather than
+   * sendScreenshot()'s, since from the chat log's perspective this IS just a text turn - the attachment
+   * itself never renders as its own message bubble the way a linked screenshot does. */
+  private sendFileViaAgent(file: File): void {
+    if (this.sending()) {
+      return;
+    }
+
+    const sessionId = this.sessionId();
+    const activityKey = sessionId ?? DRAFT_SESSION_KEY;
+    this.errorMessage.set(null);
+
+    const text = this.messageText().trim() || `I've attached ${file.name}.`;
+    this.messageText.set('');
+    this.messageSubmitted.emit(text);
+
+    const send$: Observable<ChatResponse> = (
+      sessionId
+        ? of(sessionId)
+        : this.chatService.createSession(null).pipe(map((session) => session.id))
+    ).pipe(
+      switchMap((id) =>
+        this.chatService
+          .uploadPendingAttachment(id, file)
+          .pipe(switchMap(() => this.chatService.sendMessage(id, text))),
+      ),
+    );
+
+    this.inFlightSubscription = this.chatActivity.track(activityKey, send$).subscribe({
+      next: (response) => {
+        this.inFlightSubscription = null;
+        this.removeAttachment();
+        if (sessionId) {
+          this.messageSent.emit(sessionId);
+        } else {
+          this.sessionCreated.emit(response.sessionId);
+        }
+        this.focusField();
+      },
+      error: () => {
+        this.inFlightSubscription = null;
+        this.messageText.set(text);
+        this.messageFailed.emit();
+        this.errorMessage.set('Could not send that file. Please try again.');
+        this.focusField();
+      },
+    });
   }
 
   /** Drops a starter phrase into the box and puts the cursor at the end, ready to finish. Called by
@@ -249,22 +356,57 @@ export class MessageComposer implements OnDestroy {
     // for the frontend to make (and no window where an empty session would exist because of one).
     // track() marks the request busy and clears it via finalize() when it settles, however it settles -
     // see chat-activity.service.ts.
-    this.chatActivity.track(activityKey, this.chatService.sendMessage(sessionId, text)).subscribe({
-      next: (response) => {
-        if (sessionId) {
-          this.messageSent.emit(sessionId);
-        } else {
-          // The backend just created a real session for this. MessageThread needs to navigate to it -
-          // it can't just reload "this" session, because there was no session to reload.
-          this.sessionCreated.emit(response.sessionId);
-        }
-      },
-      error: () => {
-        this.messageText.set(text);
-        this.messageFailed.emit();
-        this.errorMessage.set('Could not send that message. Please try again.');
-      },
-    });
+    this.inFlightSubscription = this.chatActivity
+      .track(activityKey, this.chatService.sendMessage(sessionId, text))
+      .subscribe({
+        next: (response) => {
+          this.inFlightSubscription = null;
+          if (sessionId) {
+            this.messageSent.emit(sessionId);
+          } else {
+            // The backend just created a real session for this. MessageThread needs to navigate to it -
+            // it can't just reload "this" session, because there was no session to reload.
+            this.sessionCreated.emit(response.sessionId);
+          }
+          this.focusField();
+        },
+        error: () => {
+          this.inFlightSubscription = null;
+          this.messageText.set(text);
+          this.messageFailed.emit();
+          this.errorMessage.set('Could not send that message. Please try again.');
+          this.focusField();
+        },
+      });
+  }
+
+  /** Aborts the in-flight send - see inFlightSubscription's doc comment for how unsubscribing does
+   * that. There's deliberately no separate "cancelled" state to clean up: unsubscribing runs
+   * chat-activity's finalize() exactly like a normal completion, so sending() flips back to false on
+   * its own. The one thing that IS cancellation-specific is restoring the optimistic UI a normal
+   * error would have restored too - the typed text and the pending bubble in the log - since neither
+   * the success nor the error handler above gets to run for an aborted request. */
+  stop(): void {
+    this.inFlightSubscription?.unsubscribe();
+    this.inFlightSubscription = null;
+    this.messageFailed.emit();
+    this.errorMessage.set('Send cancelled.');
+    this.focusField();
+  }
+
+  private focusField(): void {
+    const field = this.textarea?.nativeElement;
+    if (field) {
+      // Matches the queueMicrotask pattern prefill() uses below - the field is already in the DOM
+      // here (unlike prefill's case), but queueing keeps the two focus-management code paths
+      // consistent and avoids fighting Angular's own change-detection timing on the disabled state.
+      queueMicrotask(() => field.focus());
+    }
+    // autoGrow() only runs on the (input) event, so a programmatic clear (messageText.set('') below)
+    // leaves the inline height it set behind - the box would stay tall around empty text otherwise.
+    if (field) {
+      field.style.height = 'auto';
+    }
   }
 
   private sendScreenshot(file: File): void {
@@ -294,7 +436,9 @@ export class MessageComposer implements OnDestroy {
     // and the /api/chats/empty cleanup endpoint exist to cover, in case the upload never completes (a
     // dropped connection between the two calls, etc.) - see ChatSessionService for both.
     const upload$: Observable<{ sessionId: string }> = (
-      existingSessionId ? of(existingSessionId) : this.chatService.createSession(null).pipe(map((session) => session.id))
+      existingSessionId
+        ? of(existingSessionId)
+        : this.chatService.createSession(null).pipe(map((session) => session.id))
     ).pipe(
       switchMap((sessionId) =>
         this.chatService
@@ -303,8 +447,9 @@ export class MessageComposer implements OnDestroy {
       ),
     );
 
-    this.chatActivity.track(activityKey, upload$).subscribe({
+    this.inFlightSubscription = this.chatActivity.track(activityKey, upload$).subscribe({
       next: ({ sessionId }) => {
+        this.inFlightSubscription = null;
         // Note: a successful upload$ here does NOT necessarily mean the screenshot was successfully
         // linked in Azure DevOps - AppendMessageResult.success can be false (e.g. ADO rejected the
         // request) while the HTTP call itself still succeeds, because the backend always records a
@@ -319,12 +464,17 @@ export class MessageComposer implements OnDestroy {
         } else {
           this.sessionCreated.emit(sessionId);
         }
+        this.focusField();
       },
       error: (err: HttpErrorResponse) => {
+        this.inFlightSubscription = null;
         // Both AdoNotConfiguredException (ChatsController's catch block) and a plain validation
         // failure (missing workItemId, oversized file) now use the same ApiErrorResponse shape - no
         // more guessing which kind of 400 this is by inspecting the body's type.
-        this.errorMessage.set(extractApiErrorMessage(err.error, 'Could not upload that screenshot. Please try again.'));
+        this.errorMessage.set(
+          extractApiErrorMessage(err.error, 'Could not upload that screenshot. Please try again.'),
+        );
+        this.focusField();
       },
     });
   }

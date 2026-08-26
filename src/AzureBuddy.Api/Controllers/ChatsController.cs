@@ -24,15 +24,18 @@ public sealed class ChatsController : ControllerBase
     private readonly ChatSessionService _chatSessionService;
     private readonly UserAdoConfigService _adoConfigService;
     private readonly AdoConnectionContextAccessor _connectionAccessor;
+    private readonly IPendingAttachmentStore _pendingAttachmentStore;
 
     public ChatsController(
         ChatSessionService chatSessionService,
         UserAdoConfigService adoConfigService,
-        AdoConnectionContextAccessor connectionAccessor)
+        AdoConnectionContextAccessor connectionAccessor,
+        IPendingAttachmentStore pendingAttachmentStore)
     {
         _chatSessionService = chatSessionService;
         _adoConfigService = adoConfigService;
         _connectionAccessor = connectionAccessor;
+        _pendingAttachmentStore = pendingAttachmentStore;
     }
 
     [HttpGet]
@@ -48,7 +51,7 @@ public sealed class ChatsController : ControllerBase
     public async Task<ActionResult<ChatSessionDetail>> GetAsync(Guid sessionId, CancellationToken cancellationToken)
     {
         var session = await _chatSessionService.GetSessionAsync(User.GetRequiredUserId(), sessionId, cancellationToken);
-        return session is null ? NotFound() : Ok(session);
+        return session is null ? SessionNotFound() : Ok(session);
     }
 
     [HttpPost]
@@ -70,14 +73,14 @@ public sealed class ChatsController : ControllerBase
         Guid sessionId, RenameSessionRequest request, CancellationToken cancellationToken)
     {
         var renamed = await _chatSessionService.RenameSessionAsync(User.GetRequiredUserId(), sessionId, request.Title, cancellationToken);
-        return renamed is null ? NotFound() : Ok(renamed);
+        return renamed is null ? SessionNotFound() : Ok(renamed);
     }
 
     [HttpDelete("{sessionId:guid}")]
     public async Task<IActionResult> DeleteAsync(Guid sessionId, CancellationToken cancellationToken)
     {
         var deleted = await _chatSessionService.DeleteSessionAsync(User.GetRequiredUserId(), sessionId, cancellationToken);
-        return deleted ? NoContent() : NotFound();
+        return deleted ? NoContent() : SessionNotFound();
     }
 
     /// <summary>Cleanup for sessions that got created but never received a first message - see
@@ -124,7 +127,7 @@ public sealed class ChatsController : ControllerBase
             }
 
             var message = await _chatSessionService.AppendMessageAsync(userId, sessionId, role, content, workItemId, cancellationToken: cancellationToken);
-            return message is null ? NotFound() : Ok(message);
+            return message is null ? SessionNotFound() : Ok(message);
         }
 
         if (workItemId is null)
@@ -171,7 +174,7 @@ public sealed class ChatsController : ControllerBase
 
         if (result is null)
         {
-            return NotFound();
+            return SessionNotFound();
         }
 
         // Still 200 even on a failed attachment - the failure is represented as a message in the chat
@@ -179,4 +182,51 @@ public sealed class ChatsController : ControllerBase
         // error, since from the client's perspective the *request* succeeded (a message was recorded).
         return Ok(result);
     }
+
+    /// <summary>
+    /// Uploads a file into a chat session's single pending-attachment slot, for the conversational agent's
+    /// attach_file_to_work_item tool to pick up on a later turn - unlike the screenshot path above, this
+    /// doesn't require (or accept) a workItemId: the agent decides which item to attach it to, based on
+    /// what the user says in chat. Returns only metadata - the bytes go straight into
+    /// IPendingAttachmentStore, not back to the caller.
+    /// </summary>
+    [HttpPost("{sessionId:guid}/attachments")]
+    [RequestSizeLimit(MaxScreenshotBytes)]
+    public async Task<IActionResult> UploadAttachmentAsync(Guid sessionId, IFormFile file, CancellationToken cancellationToken)
+    {
+        var userId = User.GetRequiredUserId();
+
+        var session = await _chatSessionService.GetSessionAsync(userId, sessionId, cancellationToken);
+        if (session is null)
+        {
+            return SessionNotFound();
+        }
+
+        if (file.Length == 0 || file.Length > MaxScreenshotBytes)
+        {
+            return BadRequest(new ApiErrorResponse(new ApiError(
+                "invalid_file_size",
+                $"File must be between 1 byte and {MaxScreenshotBytes / (1024 * 1024)} MB.",
+                "file")));
+        }
+
+        using var memoryStream = new MemoryStream();
+        await file.CopyToAsync(memoryStream, cancellationToken);
+
+        await _pendingAttachmentStore.SetAsync(
+            sessionId.ToString(),
+            new PendingAttachment(file.FileName, file.ContentType, memoryStream.ToArray(), DateTime.UtcNow),
+            cancellationToken);
+
+        return Ok(new { fileName = file.FileName, contentType = file.ContentType, size = file.Length });
+    }
+
+    /// <summary>Every "session/message not found" case above shares this one shape (rather than a
+    /// bare empty-body NotFound()) so GlobalExceptionHandler's ApiErrorResponse convention holds for
+    /// every non-2xx response in this API, not just unhandled exceptions - see
+    /// docs/improvements/04-refactor-and-dedup.md §4.11. Deliberately generic wording: every call site
+    /// here is either a bad id or someone else's session id, and the two must stay indistinguishable
+    /// to the caller to avoid leaking which one it was.</summary>
+    private NotFoundObjectResult SessionNotFound() =>
+        NotFound(new ApiErrorResponse(new ApiError("not_found", "Chat session not found.")));
 }

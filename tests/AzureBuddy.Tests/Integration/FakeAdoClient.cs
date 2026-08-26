@@ -17,6 +17,8 @@ public sealed class FakeAdoClient : IAdoClient
     public Func<AdoConnectionContext, string, byte[], AdoAttachmentReference> CreateAttachmentBehavior { get; set; } =
         (_, fileName, _) => new AdoAttachmentReference("fake-attachment-id", $"https://fake.ado.local/attachments/{fileName}");
     public Func<AdoConnectionContext, bool> TestConnectionBehavior { get; set; } = _ => true;
+    public Func<AdoConnectionContext, int, WorkItem?> GetWorkItemBehavior { get; set; } = (_, id) => new WorkItem { Id = id };
+    public Func<AdoConnectionContext, string, IReadOnlyList<ResolvedIdentity>> SearchIdentitiesBehavior { get; set; } = (_, _) => Array.Empty<ResolvedIdentity>();
 
     public List<(string Method, AdoConnectionContext Connection)> Calls { get; } = new();
 
@@ -56,6 +58,18 @@ public sealed class FakeAdoClient : IAdoClient
         return Task.FromResult(TestConnectionBehavior(connection));
     }
 
+    public Task<WorkItem?> GetWorkItemAsync(AdoConnectionContext connection, int id, CancellationToken cancellationToken = default)
+    {
+        Calls.Add((nameof(GetWorkItemAsync), connection));
+        return Task.FromResult(GetWorkItemBehavior(connection, id));
+    }
+
+    public Task<IReadOnlyList<ResolvedIdentity>> SearchIdentitiesAsync(AdoConnectionContext connection, string filterValue, CancellationToken cancellationToken = default)
+    {
+        Calls.Add((nameof(SearchIdentitiesAsync), connection));
+        return Task.FromResult(SearchIdentitiesBehavior(connection, filterValue));
+    }
+
     /// <summary>Resets all behaviors to their defaults and clears the call log - call between tests
     /// that share a factory instance so one test's configuration can't leak into the next.</summary>
     public void Reset()
@@ -66,6 +80,8 @@ public sealed class FakeAdoClient : IAdoClient
         UpdateWorkItemBehavior = (_, id, _) => new WorkItem { Id = id };
         CreateAttachmentBehavior = (_, fileName, _) => new AdoAttachmentReference("fake-attachment-id", $"https://fake.ado.local/attachments/{fileName}");
         TestConnectionBehavior = _ => true;
+        GetWorkItemBehavior = (_, id) => new WorkItem { Id = id };
+        SearchIdentitiesBehavior = (_, _) => Array.Empty<ResolvedIdentity>();
         Calls.Clear();
     }
 }

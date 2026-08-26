@@ -1,4 +1,15 @@
-import { Component, ElementRef, Injector, ViewChild, afterNextRender, computed, effect, inject, input, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  Injector,
+  ViewChild,
+  afterNextRender,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+} from '@angular/core';
 import { Router } from '@angular/router';
 
 import { ChatService } from '../../../core/services/chat.service';
@@ -16,11 +27,7 @@ import { crossFade, fadeSlideIn, openerStagger } from '../../../shared/animation
  * chat (list my items, view linked bugs, file a bug) aren't discoverable any other way, so the
  * empty state is where you learn what the tool can actually do. Phrased the way a QA engineer would
  * actually ask, so they double as examples of what wording works. */
-const STARTERS = [
-  'Show my open work items',
-  'What linked bugs are under #',
-  'File a bug against ',
-];
+const STARTERS = ['Show my open work items', 'What linked bugs are under #', 'File a bug against '];
 
 // Uses effect(), not ngOnInit, because this component's `sessionId` input can change without the
 // component itself being destroyed and recreated (ChatPage stays mounted across /chat/:id1 ->
@@ -65,7 +72,9 @@ export class MessageThread {
    * conversation the message was actually sent to and nowhere else. Read from the shared service
    * rather than tracked here, so it neither leaks into the next conversation you open nor resets to
    * false just because you visited the Connection page and came back. */
-  readonly isAwaitingReply = computed(() => this.chatActivity.isWorking(this.sessionId() ?? DRAFT_SESSION_KEY));
+  readonly isAwaitingReply = computed(() =>
+    this.chatActivity.isWorking(this.sessionId() ?? DRAFT_SESSION_KEY),
+  );
 
   /** Built once from the user's saved ADO settings (see AdoSettingsService) and handed down to every
    * MessageItem so it can render real, clickable "open in Azure DevOps" links for work item ids -
@@ -74,6 +83,35 @@ export class MessageThread {
   readonly adoWorkItemBaseUrl = signal<string | null>(null);
 
   @ViewChild('logContainer') private logContainer?: ElementRef<HTMLDivElement>;
+
+  /** How close to the bottom (in pixels) still counts as "at the bottom" for auto-scroll purposes -
+   * a reader who has scrolled up even a little is deliberately reading history, but a few leftover
+   * pixels from a still-settling layout shouldn't count as having scrolled away. */
+  private static readonly NEAR_BOTTOM_THRESHOLD_PX = 48;
+
+  /** Whether new content should show a "jump to latest" affordance instead of being auto-scrolled to -
+   * see scrollToBottom() and onLogScroll() below. */
+  readonly hasUnseenMessages = signal(false);
+  private isNearBottom = true;
+
+  /** Tracks how close to the bottom the reader currently is, so a reply that lands while they've
+   * scrolled up to read earlier history doesn't yank them back down without warning (see §7.6). */
+  onLogScroll(): void {
+    const el = this.logContainer?.nativeElement;
+    if (!el) {
+      return;
+    }
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    this.isNearBottom = distanceFromBottom <= MessageThread.NEAR_BOTTOM_THRESHOLD_PX;
+    if (this.isNearBottom) {
+      this.hasUnseenMessages.set(false);
+    }
+  }
+
+  jumpToLatest(): void {
+    this.hasUnseenMessages.set(false);
+    this.scrollToBottom(true);
+  }
 
   /** A reference to the child composer component instance (not its DOM element) - that's what lets
    * the empty state's starter chips drop text into the composer's own field. */
@@ -101,9 +139,13 @@ export class MessageThread {
       // rendered into session B's log until B's fetch came back and replaced it. Dropped synchronously
       // here rather than waiting for loadMessages' response, which is exactly the window it was visible in.
       this.pendingMessage.set(null);
+      // Opening a (different) conversation always starts pinned to its latest message, regardless of
+      // where the reader happened to have scrolled the previous one.
+      this.isNearBottom = true;
+      this.hasUnseenMessages.set(false);
 
       if (id) {
-        this.loadMessages(id);
+        this.loadMessages(id, true);
       } else {
         // A draft conversation has nothing to fetch - GET /api/chats/{id} doesn't apply until a real
         // session exists. Show the same empty/opener state a freshly-created, still-empty session would.
@@ -111,6 +153,16 @@ export class MessageThread {
         this.loading.set(false);
         this.loadError.set(null);
       }
+    });
+
+    // The typing indicator appearing/disappearing is itself new content in the log - without this,
+    // scrolling only followed messages, so a reply finishing (indicator disappears, real content
+    // appears via onMessageSent -> loadMessages) was the one moment scrolling was inconsistent with
+    // the rest of the log's behaviour. Non-forced: still respects isNearBottom like any other
+    // reply-driven update.
+    effect(() => {
+      this.isAwaitingReply();
+      this.scrollToBottom();
     });
 
     this.adoSettingsService.get().subscribe((settings) => {
@@ -122,7 +174,10 @@ export class MessageThread {
     });
   }
 
-  private loadMessages(sessionId: string): void {
+  /** `forceScroll` is true for the initial open of a conversation (always land at the bottom) and
+   * false for a reload triggered by a reply landing in the background - see scrollToBottom() and
+   * §7.6 for why those two cases need to behave differently. */
+  private loadMessages(sessionId: string, forceScroll = false): void {
     this.loading.set(true);
     this.loadError.set(null);
 
@@ -131,7 +186,7 @@ export class MessageThread {
         this.messages.set(detail.messages);
         this.pendingMessage.set(null);
         this.loading.set(false);
-        this.scrollToBottom();
+        this.scrollToBottom(forceScroll);
 
         // This GET already has everything the sidebar needs (title, timestamps) to show the entry that
         // sending the first message just created - reusing it here means the sidebar updates without a
@@ -185,7 +240,9 @@ export class MessageThread {
       table: null,
       createdAt: new Date().toISOString(),
     });
-    this.scrollToBottom();
+    // Always scroll for the reader's own message, even if they'd scrolled up to read history first -
+    // sending a message is a clear "I'm done reading, back to the bottom" signal.
+    this.scrollToBottom(true);
   }
 
   onMessageFailed(): void {
@@ -201,7 +258,17 @@ export class MessageThread {
     this.router.navigate(['/chat', newSessionId]);
   }
 
-  private scrollToBottom(): void {
+  /** `force` bypasses the near-bottom check - used for the reader's own actions (an initial load, or
+   * their own message appearing) where jumping to the bottom is always what's wanted. A reply landing
+   * while the reader has scrolled up to read earlier history is the one case that respects
+   * `isNearBottom` instead: see §7.6 - it shows the "jump to latest" affordance rather than yanking
+   * their scroll position out from under them. */
+  private scrollToBottom(force = false): void {
+    if (!force && !this.isNearBottom) {
+      this.hasUnseenMessages.set(true);
+      return;
+    }
+
     // afterNextRender (not queueMicrotask, which this used to be) is the one API that's actually
     // guaranteed to run AFTER Angular has painted the change to the DOM. queueMicrotask just races
     // Angular's own zoneless rendering scheduler - which also runs via a microtask - with no
@@ -219,6 +286,8 @@ export class MessageThread {
         const el = this.logContainer?.nativeElement;
         if (el) {
           el.scrollTop = el.scrollHeight;
+          this.isNearBottom = true;
+          this.hasUnseenMessages.set(false);
         }
       },
       { injector: this.injector },

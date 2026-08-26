@@ -73,8 +73,8 @@ public static class LlmServiceCollectionExtensions
 
             if (options.Providers.Count == 0)
             {
-                throw new InvalidOperationException(
-                    "No LLM provider is configured - set it from the admin LLM settings screen, or Llm:Providers in appsettings.json.");
+                throw new LlmNotConfiguredException(
+                    "No LLM provider is configured - an admin must set one up from the LLM settings screen (/admin/llm) before chat will work.");
             }
 
             var chain = options.Providers

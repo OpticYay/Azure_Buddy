@@ -34,8 +34,6 @@ public sealed record CreateSessionRequest(string? Title);
 
 public sealed record RenameSessionRequest([Required] string Title);
 
-public sealed record AppendMessageRequest(ChatMessageRole Role, string Content, int? WorkItemId);
-
 /// <summary>Result of appending a message that may have included a screenshot. Success is false only
 /// for the screenshot-upload-failed case; Message is still populated either way so the caller has
 /// something to show in the chat (an error message on failure, per the "don't silently drop it" rule).</summary>

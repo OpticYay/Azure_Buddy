@@ -1,0 +1,15 @@
+# Normalize line endings to LF in the repo, regardless of the platform checking files out or in.
+* text=auto eol=lf
+
+# Binary/generated assets should never go through line-ending or diff normalization.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.dll binary
+*.pdb binary

@@ -31,3 +31,14 @@ public sealed class ChatCompletionProviderException : Exception
         ProviderName = providerName;
     }
 }
+
+/// <summary>Thrown from the IChatCompletionClient DI factory (see LlmServiceCollectionExtensions) when no
+/// provider is configured yet - distinct from ChatCompletionProviderException (a configured provider that
+/// failed at call time) so GlobalExceptionHandler can map it to its own status code and keep the
+/// actionable "go configure it" message intact instead of it being swallowed into a generic 500.</summary>
+public sealed class LlmNotConfiguredException : Exception
+{
+    public LlmNotConfiguredException(string message) : base(message)
+    {
+    }
+}

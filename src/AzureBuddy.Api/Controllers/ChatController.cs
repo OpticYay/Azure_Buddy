@@ -2,11 +2,13 @@ using System.ComponentModel.DataAnnotations;
 using AzureBuddy.Core.Auth;
 using AzureBuddy.Core.AzureDevOps;
 using AzureBuddy.Core.Chat;
+using AzureBuddy.Core.Common;
 using AzureBuddy.Core.Routing;
 using AzureBuddy.Core.Settings;
 using AzureBuddy.Data.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace AzureBuddy.Api.Controllers;
 
@@ -35,25 +37,29 @@ public sealed record ChatResponse(
 ///      so this live flow produces the same durable history the /api/chats endpoints expose.
 /// </summary>
 [ApiController]
-[Route("chat")]
+[Route("api/chat")]
 [Authorize]
+[EnableRateLimiting(RateLimiterPolicies.Chat)]
 public sealed class ChatController : ControllerBase
 {
     private readonly IntentRouter _intentRouter;
     private readonly ChatSessionService _chatSessionService;
     private readonly UserAdoConfigService _adoConfigService;
     private readonly AdoConnectionContextAccessor _connectionAccessor;
+    private readonly ChatSessionContextAccessor _sessionAccessor;
 
     public ChatController(
         IntentRouter intentRouter,
         ChatSessionService chatSessionService,
         UserAdoConfigService adoConfigService,
-        AdoConnectionContextAccessor connectionAccessor)
+        AdoConnectionContextAccessor connectionAccessor,
+        ChatSessionContextAccessor sessionAccessor)
     {
         _intentRouter = intentRouter;
         _chatSessionService = chatSessionService;
         _adoConfigService = adoConfigService;
         _connectionAccessor = connectionAccessor;
+        _sessionAccessor = sessionAccessor;
     }
 
     // [Required] on ChatRequest.Message (validated automatically by [ApiController]) covers both null
@@ -76,10 +82,11 @@ public sealed class ChatController : ControllerBase
         if (request.SessionId is not null && session is null)
         {
             // Either a bad id or (deliberately, to avoid leaking existence) someone else's session id.
-            return NotFound("Chat session not found.");
+            return NotFound(new ApiErrorResponse(new ApiError("not_found", "Chat session not found.")));
         }
 
         session ??= await _chatSessionService.CreateSessionAsync(userId, title: null, cancellationToken);
+        _sessionAccessor.SessionId = session.Id.ToString();
 
         await _chatSessionService.AppendMessageAsync(
             userId, session.Id, ChatMessageRole.User, request.Message, workItemId: null, cancellationToken: cancellationToken);

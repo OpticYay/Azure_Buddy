@@ -39,11 +39,33 @@ public sealed class AppDbContext : IdentityDbContext<ApplicationUser>
             // Deleting a user deletes their stored ADO settings too - no orphaned PAT ciphertext left behind.
             .OnDelete(DeleteBehavior.Cascade);
 
+        builder.Entity<UserAdoSettings>()
+            .Property(s => s.OrganizationUrl)
+            .HasMaxLength(512);
+
+        builder.Entity<UserAdoSettings>()
+            .Property(s => s.DefaultProject)
+            .HasMaxLength(512);
+
+        builder.Entity<UserAdoSettings>()
+            .Property(s => s.EncryptedPat)
+            .HasMaxLength(1024);
+
         builder.Entity<ChatSession>()
             .HasOne(s => s.User)
             .WithMany()
             .HasForeignKey(s => s.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<ChatSession>()
+            .Property(s => s.Title)
+            .HasMaxLength(128);
+
+        // ListSessionsAsync filters by UserId and orders by UpdatedAt - without this composite index
+        // MySQL can use the existing UserId index to narrow rows but still has to filesort every page
+        // by UpdatedAt itself.
+        builder.Entity<ChatSession>()
+            .HasIndex(s => new { s.UserId, s.UpdatedAt });
 
         builder.Entity<ChatMessage>()
             .HasOne(m => m.Session)
@@ -53,10 +75,21 @@ public sealed class AppDbContext : IdentityDbContext<ApplicationUser>
             .OnDelete(DeleteBehavior.Cascade);
 
         // Store the Role enum as its string name ("User"/"Assistant") instead of an integer - makes
-        // the raw table readable when debugging, at a trivial storage cost.
+        // the raw table readable when debugging, at a trivial storage cost. Bounded to the longest
+        // enum member name rather than left as longtext, since it can only ever be "User" or "Assistant".
         builder.Entity<ChatMessage>()
             .Property(m => m.Role)
-            .HasConversion<string>();
+            .HasConversion<string>()
+            .HasMaxLength(16);
+
+        builder.Entity<ChatMessage>()
+            .Property(m => m.AdoAttachmentUrl)
+            .HasMaxLength(512);
+
+        // GetSessionAsync orders included messages by CreatedAt - this composite index covers both
+        // the SessionId filter and that ordering.
+        builder.Entity<ChatMessage>()
+            .HasIndex(m => new { m.SessionId, m.CreatedAt });
 
         // LlmSettings is a singleton row - its Id is always exactly LlmSettings.SingletonId (1), by
         // application convention, never database-assigned. Without ValueGeneratedNever(), EF Core
@@ -69,6 +102,30 @@ public sealed class AppDbContext : IdentityDbContext<ApplicationUser>
             .Property(s => s.Id)
             .ValueGeneratedNever();
 
+        builder.Entity<LlmSettings>()
+            .Property(s => s.ProvidersCsv)
+            .HasMaxLength(64);
+
+        builder.Entity<LlmSettings>()
+            .Property(s => s.GeminiModel)
+            .HasMaxLength(128);
+
+        builder.Entity<LlmSettings>()
+            .Property(s => s.GeminiBaseUrl)
+            .HasMaxLength(512);
+
+        builder.Entity<LlmSettings>()
+            .Property(s => s.GeminiEncryptedApiKey)
+            .HasMaxLength(1024);
+
+        builder.Entity<LlmSettings>()
+            .Property(s => s.OllamaModel)
+            .HasMaxLength(128);
+
+        builder.Entity<LlmSettings>()
+            .Property(s => s.OllamaBaseUrl)
+            .HasMaxLength(512);
+
         builder.Entity<RefreshToken>()
             .HasOne(t => t.User)
             .WithMany()
@@ -79,6 +136,11 @@ public sealed class AppDbContext : IdentityDbContext<ApplicationUser>
         // dominant query pattern against this table.
         builder.Entity<RefreshToken>()
             .HasIndex(t => t.TokenHash);
+
+        // AccountService's RevokeOtherSessionsAsync (and any bulk-revoke path built on the same shape)
+        // filters active refresh tokens per user.
+        builder.Entity<RefreshToken>()
+            .HasIndex(t => new { t.UserId, t.RevokedAt });
 
         // A state name can only appear once per work item type - this is what makes the admin
         // "add a state" form fail cleanly instead of silently creating a confusing duplicate row.

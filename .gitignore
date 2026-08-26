@@ -77,4 +77,7 @@ docker-compose.override.yml
 *.swp
 *~
 
+# Local-only audit/notes, never pushed to remote.
+docs/
+
 # Keep the README and example config tracked; ignore real secrets and generated files.

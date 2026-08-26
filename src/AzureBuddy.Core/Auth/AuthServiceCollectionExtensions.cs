@@ -1,6 +1,7 @@
 using AzureBuddy.Core.Common;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace AzureBuddy.Core.Auth;
 
@@ -8,7 +9,13 @@ public static class AuthServiceCollectionExtensions
 {
     public static IServiceCollection AddAzureBuddyAuth(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
+        // ValidateDataAnnotations + ValidateOnStart turns a too-short/missing Jwt:SigningKey (see
+        // JwtOptions' [Required, MinLength(32)]) into a clear startup failure instead of a
+        // SymmetricSecurityKey exception the first time a token is minted, deep inside the JWT library.
+        services.AddOptions<JwtOptions>()
+            .Bind(configuration.GetSection(JwtOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
         services.Configure<AppOptions>(configuration.GetSection(AppOptions.SectionName));
         services.AddScoped<TokenService>();
         services.AddScoped<AuthService>();

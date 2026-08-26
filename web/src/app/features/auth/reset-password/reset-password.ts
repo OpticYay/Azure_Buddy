@@ -55,15 +55,22 @@ export class ResetPassword implements OnInit {
 
     // Deliberately does NOT log the user in (see AuthService.resetPassword's docs) - send them to
     // /login to sign in explicitly with their new password instead.
-    this.auth.resetPassword({ email: this.email, token: this.token, newPassword: newPassword! }).subscribe({
-      next: () => {
-        this.toast.success('Password reset. Sign in with your new password.');
-        this.router.navigateByUrl('/login');
-      },
-      error: (err: HttpErrorResponse) => {
-        this.isSubmitting.set(false);
-        this.errorMessage.set(extractApiErrorMessage(err.error, 'Could not reset your password. The link may have expired.'));
-      },
-    });
+    this.auth
+      .resetPassword({ email: this.email, token: this.token, newPassword: newPassword! })
+      .subscribe({
+        next: () => {
+          this.toast.success('Password reset. Sign in with your new password.');
+          this.router.navigateByUrl('/login');
+        },
+        error: (err: HttpErrorResponse) => {
+          this.isSubmitting.set(false);
+          this.errorMessage.set(
+            extractApiErrorMessage(
+              err.error,
+              'Could not reset your password. The link may have expired.',
+            ),
+          );
+        },
+      });
   }
 }

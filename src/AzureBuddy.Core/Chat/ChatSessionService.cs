@@ -54,6 +54,7 @@ public sealed class ChatSessionService
         // this filter is what keeps that class of bug from ever being visible again, independent of
         // whether every path that CREATES a session is currently well-behaved.
         var query = _dbContext.ChatSessions
+            .AsNoTracking()
             .Where(s => s.UserId == userId && s.Messages.Any())
             .OrderByDescending(s => s.UpdatedAt);
 
@@ -69,7 +70,13 @@ public sealed class ChatSessionService
 
     public async Task<ChatSessionDetail?> GetSessionAsync(string userId, Guid sessionId, CancellationToken cancellationToken = default)
     {
+        // AsSplitQuery: the frontend (message-thread.ts) always re-fetches the whole session on load
+        // and after every message sent, so the full history genuinely needs to load every time rather
+        // than being paged - splitting the messages Include into its own query avoids duplicating the
+        // session's own columns once per message row, which a single JOIN would otherwise do.
         var session = await _dbContext.ChatSessions
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(s => s.Messages.OrderBy(m => m.CreatedAt))
             .SingleOrDefaultAsync(s => s.Id == sessionId && s.UserId == userId, cancellationToken);
 
@@ -122,24 +129,29 @@ public sealed class ChatSessionService
     /// just hiding them from the list forever.</summary>
     public async Task<int> DeleteEmptySessionsAsync(string userId, CancellationToken cancellationToken = default)
     {
-        var empty = await _dbContext.ChatSessions
+        // Need the ids to evict their (now-orphaned) history-cache entries below, so this can't be a
+        // single blind ExecuteDeleteAsync - but it's still cheaper to fetch just the ids than to
+        // materialize and RemoveRange whole tracked ChatSession entities just to delete them.
+        var emptyIds = await _dbContext.ChatSessions
             .Where(s => s.UserId == userId && !s.Messages.Any())
+            .Select(s => s.Id)
             .ToListAsync(cancellationToken);
 
-        if (empty.Count == 0)
+        if (emptyIds.Count == 0)
         {
             return 0;
         }
 
-        _dbContext.ChatSessions.RemoveRange(empty);
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        await _dbContext.ChatSessions
+            .Where(s => emptyIds.Contains(s.Id))
+            .ExecuteDeleteAsync(cancellationToken);
 
-        foreach (var session in empty)
+        foreach (var sessionId in emptyIds)
         {
-            await EvictHistorySafelyAsync(session.Id, cancellationToken);
+            await EvictHistorySafelyAsync(sessionId, cancellationToken);
         }
 
-        return empty.Count;
+        return emptyIds.Count;
     }
 
     /// <summary>True if a session with this id exists and belongs to the caller (used by controllers

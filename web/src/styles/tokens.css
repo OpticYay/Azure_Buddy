@@ -4,72 +4,77 @@
  * What tokens are, if you haven't met the pattern: named CSS variables ("custom properties") that
  * every component references instead of hardcoding a value. Without them, "the accent color" ends
  * up copy-pasted as a raw hex code into a dozen component files, and changing it means hunting
- * through all of them. With them, components write `color: var(--brass)` - a reference, not a copy -
+ * through all of them. With them, components write `color: var(--accent)` - a reference, not a copy -
  * so this one file is the only place a color, spacing step, or radius is ever decided.
  *
- * ── The direction: "Instrument" ────────────────────────────────────────────────────────────────
+ * ── The direction: "Instrument, after hours" ───────────────────────────────────────────────────
  *
  * This is a QA tool. Its user is mid-test, finds a defect, and files it with evidence attached to
- * an Azure DevOps record. The world it belongs to is measurement and documentation - gauges, logs,
- * case files, evidence tags - not consumer messaging. So:
- *
- *   PETROL      a deep blue-green near-black. Structural, instrument-panel, and specifically NOT
- *               Azure DevOps' own product blue - this is a companion tool sitting alongside ADO,
- *               not a clone wearing its colors.
- *   SAGE PAPER  a cool pale grey-green canvas. Deliberately not cream/beige.
- *   BRASS       the single accent, used sparingly: active markers, work item IDs, primary actions.
- *               Brass is the color of measuring instruments, and it's a hue this kind of tool
- *               almost never reaches for.
- *   PASS/FAIL   muted, clinical green and brick red. QA runs on state; state gets real color.
+ * an Azure DevOps record. The previous palette played that as daylight-lab: pale sage paper, warm
+ * brass accent. This pass keeps the same log/stamp/hairline vocabulary but drops the lights: a
+ * near-black ground, a single near-white accent instead of a hue, and PASS/FAIL kept as the only
+ * real color left in the interface because they're signal, not decoration. Sober and precise,
+ * not moody - monochrome rather than dim-and-atmospheric.
  */
 :root {
-  /* ── Petrol ink scale (structure + text) ─────────────────────────────────────────────────── */
-  --ink-900: #0b1a1b;
-  --ink-800: #12292a;
-  --ink-700: #1b3a3a;
-  --ink-600: #2c4a4a;
-  --ink-400: #5a7878;
-  --ink-300: #7e9695;
-  --ink-200: #9db0ae;
+  /* ── Ink scale (chrome only: bars, filled buttons, their hover states) ───────────────────────
+     Neutral, hueless. These never carry text - see the chalk scale below for anything read as a
+     sentence, label, or value. Keeping the two scales separate avoids the old palette's accidental
+     trap: a token meant for "darkest button fill" and a token meant for "darkest legible text" used
+     to be the same variable, which only worked because the page itself was light. */
+  --ink-900: #0a0a0b;
+  --ink-800: #131315;
+  --ink-700: #1d1e21;
+  --ink-600: #29292d;
+  --ink-400: #434448;
+  --ink-300: #5a5b60;
+  --ink-200: #737479;
+
+  /* ── Chalk scale (everything read as text, on the dark ground) ───────────────────────────────
+     100 is the brightest thing on the page - headings, your own log entries. 300 is the scale's
+     floor: still legible, never invisible. */
+  --chalk-100: #f4f3ee;
+  --chalk-200: #cfcec7;
+  --chalk-300: #90918c;
 
   /* ── Surfaces ────────────────────────────────────────────────────────────────────────────── */
-  --paper: #edf0eb;
-  --surface: #ffffff;
-  --surface-sunk: #f6f8f4;
-  --surface-hover: #eef1ec;
-  --rule: #d8dfd8;
-  --rule-strong: #c2ccc2;
+  --paper: #0d0e0e;
+  --surface: #161718;
+  --surface-sunk: #0a0a0b;
+  --surface-hover: #1f2022;
+  --rule: rgba(244, 243, 238, 0.09);
+  --rule-strong: rgba(244, 243, 238, 0.18);
 
-  /* ── Brass accent ────────────────────────────────────────────────────────────────────────── */
-  --brass: #a97c2f;
-  --brass-lift: #c79a45;
-  --brass-deep: #7d5a1f;
-  --brass-wash: #f6efdf;
-  --brass-rule: #e3d3ae;
+  /* ── Accent ──────────────────────────────────────────────────────────────────────────────── */
+  --accent: #f3f1e8;
+  --accent-lift: #ffffff;
+  --accent-deep: #c9c7ba;
+  --accent-wash: rgba(243, 241, 232, 0.09);
+  --accent-rule: rgba(243, 241, 232, 0.24);
 
   /* ── State ───────────────────────────────────────────────────────────────────────────────── */
-  --pass: #1f6f4a;
-  --pass-wash: #e5f0e9;
-  --pass-rule: #b9d6c6;
+  --pass: #6fcf97;
+  --pass-wash: rgba(111, 207, 151, 0.12);
+  --pass-rule: rgba(111, 207, 151, 0.32);
 
-  --fail: #a63328;
-  --fail-wash: #fae9e7;
-  --fail-rule: #eec4bf;
+  --fail: #ef8b7c;
+  --fail-wash: rgba(239, 139, 124, 0.12);
+  --fail-rule: rgba(239, 139, 124, 0.32);
 
-  --warn: #8a6a18;
-  --warn-wash: #f7f0dc;
+  --warn: #e0bd6d;
+  --warn-wash: rgba(224, 189, 109, 0.12);
 
   /* ── Semantic aliases ────────────────────────────────────────────────────────────────────── */
-  --text: var(--ink-900);
-  --text-soft: var(--ink-600);
-  --text-muted: var(--ink-400);
+  --text: var(--chalk-100);
+  --text-soft: var(--chalk-200);
+  --text-muted: var(--chalk-300);
 
   /* ── Type ────────────────────────────────────────────────────────────────────────────────── */
-  --font-display: 'Archivo', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif;
   --font-body: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
 
-  --t-display: clamp(1.6rem, 1.15rem + 1.9vw, 2.35rem);
+  --t-display: clamp(1.7rem, 1.2rem + 2vw, 2.6rem);
   --t-title: 1.3125rem;
   --t-body: 0.9375rem;
   --t-sm: 0.8125rem;
@@ -88,13 +93,11 @@
   --space-2xl: 48px;
 
   /* ── Shape ───────────────────────────────────────────────────────────────────────────────── */
-  /* Small, precise radii read as machined/instrument. Fully rounded 10-12px corners are the
-     generic SaaS default; zero radius tips into the newspaper look. 3/6px sits between them. */
-  --r-sm: 3px;
-  --r-md: 6px;
+  --r-sm: 4px;
+  --r-md: 8px;
 
-  --shadow-card: 0 1px 2px rgba(11, 26, 27, 0.05), 0 8px 24px -12px rgba(11, 26, 27, 0.18);
-  --shadow-float: 0 12px 32px -8px rgba(11, 26, 27, 0.28);
+  --shadow-card: 0 1px 0 rgba(244, 243, 238, 0.04) inset, 0 16px 40px -20px rgba(0, 0, 0, 0.7);
+  --shadow-float: 0 24px 60px -16px rgba(0, 0, 0, 0.75);
 
   /* ── Layout ──────────────────────────────────────────────────────────────────────────────── */
   --sidebar-width: 264px;
@@ -102,13 +105,14 @@
 
   /* The chat column's cap. Still capped rather than full-bleed - a line of prose stretched across a
      2000px monitor is genuinely hard to read - but sized for this app's actual content, which is
-     dominated by ID/Title/Type/State work-item tables rather than paragraphs. The earlier 820px was
-     a prose-first figure that left roughly half the available width empty on a normal desktop and
-     squeezed those tables hard enough to wrap. Shared by the log and the composer so the two edges
-     always line up; they previously carried separate copies of the same number. */
+     dominated by ID/Title/Type/State work-item tables rather than paragraphs. Shared by the log and
+     the composer so the two edges always line up. */
   --chat-column-width: 1180px;
 
-  /* ── Motion ──────────────────────────────────────────────────────────────────────────────── */
-  --t-fast: 130ms cubic-bezier(0.3, 0, 0.2, 1);
-  --t-base: 220ms cubic-bezier(0.3, 0, 0.2, 1);
+  /* ── Motion ──────────────────────────────────────────────────────────────────────────────────
+     A firmer, more expressive curve than the old app - overshoot-free but with real spring shape
+     (expo-out), so state changes announce themselves instead of just resolving. */
+  --t-fast: 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  --t-base: 340ms cubic-bezier(0.22, 1, 0.36, 1);
+  --t-spring: 560ms cubic-bezier(0.16, 1, 0.3, 1);
 }
