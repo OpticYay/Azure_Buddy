@@ -166,10 +166,21 @@ function renderTable(tableLines: string[], workItemBaseUrl: string | null = null
  * raw HTML string (unlike message-item.html's `[href]` property binding, which needs no such escaping
  * of its own - see workItemIdCellUrl's doc comment for why the escaping lives here and not there). */
 function renderCell(cell: string, header: string, workItemBaseUrl: string | null): string {
-  const url = workItemIdCellUrl(header, cell, workItemBaseUrl);
+  // The model frequently writes the ID cell as "**13016**" rather than a bare number - stripping the
+  // emphasis markers before the bare-whole-number check is what keeps that still recognized as a
+  // linkable id instead of silently falling back to plain (unlinked) bold text.
+  const plainCell = stripEmphasisMarkers(cell);
+  const url = workItemIdCellUrl(header, plainCell, workItemBaseUrl);
   return url
-    ? `<a class="stamp" href="${escapeHtmlAttribute(url)}" target="_blank" rel="noopener">#${cell.trim()}</a>`
+    ? `<a class="stamp" href="${escapeHtmlAttribute(url)}" target="_blank" rel="noopener">#${plainCell}</a>`
     : renderInline(cell);
+}
+
+function stripEmphasisMarkers(text: string): string {
+  return text
+    .trim()
+    .replace(/^(\*{1,2}|_{1,2})(.*)\1$/, '$2')
+    .trim();
 }
 
 /** For values interpolated directly into an HTML attribute (as opposed to escapeHtml, which runs over

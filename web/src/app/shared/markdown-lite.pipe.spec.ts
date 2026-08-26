@@ -101,6 +101,16 @@ describe('MarkdownLitePipe', () => {
     expect(html).not.toContain('<a ');
   });
 
+  it('still links an ID-column cell the model wrote as bold markdown', () => {
+    const html = render(
+      '| ID | Title |\n|----|-------|\n| **12** | Login |',
+      'https://dev.azure.com/org/Proj/_workitems/edit',
+    );
+    expect(html).toContain('href="https://dev.azure.com/org/Proj/_workitems/edit/12"');
+    expect(html).toContain('#12');
+    expect(html).not.toContain('<strong>');
+  });
+
   it('escapes a double quote in workItemBaseUrl so it cannot break out of the href attribute', () => {
     const maliciousBaseUrl = 'https://dev.azure.com"><script>alert(1)</script>';
     const html = render('| ID | Title |\n|----|-------|\n| 12 | Login |', maliciousBaseUrl);
